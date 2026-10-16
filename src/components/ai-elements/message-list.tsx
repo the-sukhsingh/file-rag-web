@@ -39,8 +39,8 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
 
     return (
         <div className="mx-auto flex w-full max-w-md flex-col gap-8 py-6 text-sm">
-            {messages.map((msg) => (
-                <Message align={msg.sender == "human" ? "end" : "start"}>
+            {messages.map((msg,idx) => (
+                <Message key={idx} align={msg.sender == "human" ? "end" : "start"}>
                     <MessageContent className="gap-2">
                         <Bubble align={msg.sender == "human" ? "end" : "start"} variant={msg.sender == "human" ? "muted" : "tinted"}>
                             <BubbleContent>

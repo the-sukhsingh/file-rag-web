@@ -15,10 +15,22 @@ const PREV_MESSAGES: Message[] = [
 
 export default function Home() {
 
-  const [messages, setMessages] = useState<Message[]>(PREV_MESSAGES)
+  const [messages, setMessages] = useState<Message[]>([])
 
   const send_message = async (text: string): Promise<void> => {
-    console.log(text)
+    setMessages([...messages, { sender: "human", text }])
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+
+      const data = await response.json();
+      setMessages([...messages, { sender: "human", text }, { sender: "ai", text: data.message }]);
+    } catch (error) {
+      console.error("Error:", error);
+    }
   }
 
   return (
