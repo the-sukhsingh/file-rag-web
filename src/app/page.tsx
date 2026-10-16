@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 export interface Message {
-  sender: "ai" | "human",
-  text: string
+  role: "assistant" | "user",
+  content: string
 }
 
 const PREV_MESSAGES: Message[] = [
-  { sender: "human", text: "Helo1" },
-  { sender: "ai", text: "Hi, how can I help you ?" },
+  { role: "user", content: "Helo1" },
+  { role: "assistant", content: "Hi, how can I help you ?" },
 ]
 
 export default function Home() {
@@ -19,16 +19,16 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
 
   const send_message = async (text: string): Promise<void> => {
-    setMessages([...messages, { sender: "human", text }])
+    setMessages([...messages, { role: "user", content: text }])
     try {
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify([...messages, {role: "user", content: text}])
       });
 
       const data = await response.json();
-      setMessages([...messages, { sender: "human", text }, { sender: "ai", text: data.message }]);
+      setMessages([...messages, { role: "user", content: text }, { role: "assistant", content: data.message }]);
     } catch (error) {
       console.error("Error:", error);
     }

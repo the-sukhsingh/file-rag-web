@@ -1,21 +1,48 @@
 import { NextResponse } from "next/server";
-import Groq from "groq-sdk";
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// import { groq } from '@ai-sdk/groq';
+import { generateText } from 'ai';
+// import Groq from "groq-sdk";
+// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+
+import { createBashTool } from "bash-tool";
+// import { Bash, OverlayFs } from "just-bash";
+
+// const { tools, sandbox } = await createBashTool({
+//     files: { "src/index.ts": "export const x = 1;" },
+// });
+
+import { createGroq } from '@ai-sdk/groq';
+
+const groq = createGroq({
+    apiKey: process.env.GROQ_API_KEY,
+});
+
+const model = groq('openai/gpt-oss-120b');
+
+
+
 export async function POST(request: Request) {
     try {
-        const { message } = await request.json();
-        if (!message) {
+        const { messages } = await request.json();
+        console.log(messages)
+        if (!messages) {
             return NextResponse.json(
                 { error: "Message content is required" },
                 { status: 400 }
             );
         }
-        const chatCompletion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: message }],
-            model: "openai/gpt-oss-120b",
-        });
-        const responseMessage =
-            chatCompletion.choices[0]?.message?.content || "No response available.";
+
+        // const response = await generateText({
+        //     model,
+        //     messages: messages,
+        // });
+
+        // console.log(response, null, 2)
+
+        // const responseMessage = response.content;
+        const responseMessage = "Hanji";
         return NextResponse.json({ message: responseMessage });
     } catch (error) {
         console.error("Error in chat API", error);

@@ -40,15 +40,15 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
     return (
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-6 flex-1 overflow-y-scroll scrollbar-none text-sm">
             {messages.map((msg,idx) => (
-                <Message key={idx} align={msg.sender == "human" ? "end" : "start"}>
+                <Message key={idx} align={msg.role == "user" ? "end" : "start"}>
                     <MessageContent className="gap-2">
-                        <Bubble align={msg.sender == "human" ? "end" : "start"} variant={msg.sender == "human" ? "muted" : "tinted"}>
+                        <Bubble align={msg.role == "user" ? "end" : "start"} variant={msg.role == "user" ? "muted" : "tinted"}>
                             <BubbleContent>
-                                <Markdown>{msg.text}</Markdown>
+                                <Markdown>{msg.content}</Markdown>
                             </BubbleContent>
                         </Bubble>
                         <MessageFooter>
-                            {msg.sender == "human" ? (
+                            {msg.role == "user" ? (
                                 <>
                                     <MessageAction label="Copy">
                                         <CopyIcon />
@@ -63,7 +63,7 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
                                     <MessageAction
                                         label={copied ? "Copied" : "Copy"}
                                         onClick={() => {
-                                            navigator.clipboard.writeText(msg.text)
+                                            navigator.clipboard.writeText(msg.content)
                                             setCopied(true)
                                         }}
                                     >
