@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import Provider from "@/components/Provider";
+import { ModeToggle } from "@/components/theme/ThemeToggle";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["cyrillic"],
+  weight: ["300", "400", "500", "600", "700"]
+})
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -22,11 +29,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         <Provider>
+          <ModeToggle className="fixed top-3 right-3" />
           {children}
         </Provider>
       </body>

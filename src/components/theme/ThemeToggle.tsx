@@ -1,10 +1,11 @@
 "use client"
 
+import { cn } from "cn";
 import { useTheme } from "next-themes"
 import { SVGProps } from "react";
 
 
-export function ModeToggle() {
+export function ModeToggle({className=""}:{className?:string}) {
     const { theme, systemTheme, setTheme } = useTheme();
     const toggleTheme = () => {
         if (theme === 'system') {
@@ -31,7 +32,7 @@ export function ModeToggle() {
             aria-label="Toggle theme"
             aria-description="Toggle light & dark"
             onClick={handleThemeToggle}
-            className="rounded-md size-8 flex justify-center items-center aspect-square h-fit relative overflow-hidden bg-accent active:translate-y-px shadow-inner/0 hover:shadow-inner transition-all duration-75 ease-out"
+            className={cn("rounded-md size-8 flex justify-center items-center aspect-square h-fit relative overflow-hidden bg-accent active:translate-y-px shadow-inner/0 hover:shadow-inner transition-all duration-75 ease-out", className)}
             type="button"
         >
             {
