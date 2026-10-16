@@ -8,19 +8,23 @@ export interface Message {
   text: string
 }
 
-const PREV_MESSAGES : Message[] = [
-  {sender: "human", text: "Helo1"},
-  {sender: "ai", text: "Hi, how can I help you ?"},
+const PREV_MESSAGES: Message[] = [
+  { sender: "human", text: "Helo1" },
+  { sender: "ai", text: "Hi, how can I help you ?" },
 ]
 
 export default function Home() {
 
   const [messages, setMessages] = useState<Message[]>(PREV_MESSAGES)
 
+  const send_message = async (text: string): Promise<void> => {
+    console.log(text)
+  }
+
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <MessagePattern messages={messages} />
-     <PromptInputDemo />
+      <PromptInputDemo onSubmitText={send_message} />
     </div>
   );
 }

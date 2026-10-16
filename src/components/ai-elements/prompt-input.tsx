@@ -64,7 +64,7 @@ const efforts = [
     { id: "high", name: "High" },
 ]
 
-export function PromptInputDemo() {
+export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string) => Promise<void> }) {
     const [text, setText] = React.useState("")
     const [files, setFiles] = React.useState<AttachmentFile[]>([])
     const [model, setModel] = React.useState(models[0].id)
@@ -77,9 +77,10 @@ export function PromptInputDemo() {
 
     function onSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault()
-        if (!canSend) {
+        if (!canSend || !text) {
             return
         }
+        onSubmitText(text)
 
         setText("")
         setFiles([])
