@@ -24,7 +24,7 @@ export default function Home() {
       const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify([...messages, {role: "user", content: text}])
+        body: JSON.stringify({ messages: [...messages, { role: "user", content: text }] })
       });
 
       const data = await response.json();

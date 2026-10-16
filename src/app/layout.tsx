@@ -9,11 +9,11 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["cyrillic"],
-  weight: ["300", "400", "500", "600", "700"]
-})
+// const inter = Inter({
+//   variable: "--font-inter",
+//   subsets: ["cyrillic"],
+//   weight: ["300", "400", "500", "600", "700"]
+// })
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       suppressHydrationWarning
     >
       <body>

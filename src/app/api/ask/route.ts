@@ -1,32 +1,20 @@
 import { NextResponse } from "next/server";
-
-// import { groq } from '@ai-sdk/groq';
-import { generateText } from 'ai';
-// import Groq from "groq-sdk";
-// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-
+import { generateText } from "ai";
+import { createGroq } from "@ai-sdk/groq";
 import { createBashTool } from "bash-tool";
-// import { Bash, OverlayFs } from "just-bash";
 
-// const { tools, sandbox } = await createBashTool({
-//     files: { "src/index.ts": "export const x = 1;" },
-// });
-
-import { createGroq } from '@ai-sdk/groq';
+export const runtime = "nodejs";
 
 const groq = createGroq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
-const model = groq('openai/gpt-oss-120b');
-
-
+const model = groq("openai/gpt-oss-120b");
 
 export async function POST(request: Request) {
     try {
         const { messages } = await request.json();
-        console.log(messages)
+
         if (!messages) {
             return NextResponse.json(
                 { error: "Message content is required" },
@@ -34,18 +22,26 @@ export async function POST(request: Request) {
             );
         }
 
-        // const response = await generateText({
-        //     model,
-        //     messages: messages,
-        // });
+        const { tools } = await createBashTool({
+            files: {
+                "src/index.ts": "export const x = 1;",
+            },
+        });
 
-        // console.log(response, null, 2)
+        console.log("tools created", tools);
 
-        // const responseMessage = response.content;
-        const responseMessage = "Hanji";
-        return NextResponse.json({ message: responseMessage });
+        const response = await generateText({
+            model,
+            messages,
+            // tools,
+        });
+
+        return NextResponse.json({
+            message: response.output,
+        });
     } catch (error) {
-        console.error("Error in chat API", error);
+        console.error("Error in chat API:", error);
+
         return NextResponse.json(
             { error: "An error occurred while processing your request" },
             { status: 500 }
