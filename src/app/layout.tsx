@@ -29,10 +29,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body>
         <Provider>
           <ModeToggle className="fixed top-3 right-3" />
           {children}

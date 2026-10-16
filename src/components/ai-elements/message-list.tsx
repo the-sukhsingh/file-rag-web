@@ -38,7 +38,7 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
     }, [copied])
 
     return (
-        <div className="mx-auto flex w-full max-w-md flex-col gap-8 py-6 text-sm">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-6 flex-1 overflow-y-scroll scrollbar-none text-sm">
             {messages.map((msg,idx) => (
                 <Message key={idx} align={msg.sender == "human" ? "end" : "start"}>
                     <MessageContent className="gap-2">

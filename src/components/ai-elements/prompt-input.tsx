@@ -104,7 +104,7 @@ export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string)
 
     return (
         <div className="mx-auto w-full max-w-lg py-6">
-            <form ref={formRef} onSubmit={onSubmit}>
+            <form ref={formRef} onSubmit={onSubmit} className="bg-background">
                 <input
                     ref={inputRef}
                     type="file"
@@ -113,7 +113,7 @@ export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string)
                     tabIndex={-1}
                     onChange={onAttach}
                 />
-                <InputGroup>
+                <InputGroup >
                     {files.length > 0 && (
                         <InputGroupAddon align="block-start" className="flex-wrap">
                             {files.map((file) => (
