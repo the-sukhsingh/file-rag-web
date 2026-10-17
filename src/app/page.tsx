@@ -14,6 +14,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -241,82 +242,71 @@ export default function Home() {
           id="panel-chatbot"
         >
           <div className="flex h-full w-full flex-col bg-sidebar border-l border-border select-none">
-            {/* Chatbot Header */}
-            <div className="flex items-center justify-between border-b border-border/80 px-3 py-2.5 bg-card/40 pr-12">
+            {/* Unified Minimal Chatbot Header */}
+            <div className="flex h-10 items-center justify-between border-b border-border/60 bg-muted/15 px-3 select-none pr-12 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="size-6 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <BotIcon className="size-3.5" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-foreground">
-                      AI Assistant
-                    </span>
-                    <Badge variant="outline" className="px-1 py-0 text-[9px] font-mono">
-                      Groq
-                    </Badge>
-                  </div>
-                </div>
+                <span className="text-xs font-semibold text-foreground shrink-0">
+                  AI Assistant
+                </span>
+
+                {/* Inline Minimal Context Chip */}
+                {activeFile && (
+                  <button
+                    type="button"
+                    onClick={() => setIncludeFileContext(!includeFileContext)}
+                    className={cn(
+                      "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors border cursor-pointer max-w-40 truncate",
+                      includeFileContext
+                        ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
+                        : "bg-muted/40 text-muted-foreground/60 border-border/40 line-through hover:text-muted-foreground"
+                    )}
+                    title={
+                      includeFileContext
+                        ? "Context attached to prompt. Click to exclude."
+                        : "Click to include file context."
+                    }
+                  >
+                    <FileCodeIcon className="size-3 shrink-0" />
+                    <span className="truncate">{activeFile.name}</span>
+                    {includeFileContext && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="rounded hover:bg-primary/20 p-0.5 ml-0.5"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIncludeFileContext(false);
+                        }}
+                      >
+                        <XIcon className="size-2.5" />
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
 
+              {/* Header Right Actions */}
               <div className="flex items-center gap-1">
                 {messages.length > 0 && (
                   <Tooltip>
-                    <TooltipTrigger render={
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => setIsClearChatOpen(true)}
-                        aria-label="Clear chat"
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </Button>
-                    } />
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => setIsClearChatOpen(true)}
+                          aria-label="Clear chat"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2Icon className="size-3.5" />
+                        </Button>
+                      }
+                    />
                     <TooltipContent>Clear Chat</TooltipContent>
                   </Tooltip>
                 )}
               </div>
             </div>
-
-            {/* Active File Context Chip */}
-            {activeFile && (
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 bg-muted/20 text-[11px]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-muted-foreground">Context:</span>
-                  <div
-                    onClick={() => setIncludeFileContext(!includeFileContext)}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded cursor-pointer transition-colors max-w-44 truncate ${
-                      includeFileContext
-                        ? "bg-primary/10 text-primary border border-primary/20"
-                        : "bg-muted text-muted-foreground line-through"
-                    }`}
-                    title={
-                      includeFileContext
-                        ? "File content is included with your queries"
-                        : "Click to include file context"
-                    }
-                  >
-                    <FileCodeIcon className="size-3 shrink-0" />
-                    <span className="truncate">{activeFile.name}</span>
-                  </div>
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="size-4 p-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => setIncludeFileContext(!includeFileContext)}
-                  title={includeFileContext ? "Exclude context" : "Include context"}
-                >
-                  {includeFileContext ? (
-                    <XIcon className="size-3" />
-                  ) : (
-                    <SparklesIcon className="size-3 text-primary" />
-                  )}
-                </Button>
-              </div>
-            )}
 
             {/* Chat Messages Area */}
             <div className="flex-1 overflow-hidden flex flex-col relative">
