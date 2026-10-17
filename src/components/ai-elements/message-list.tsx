@@ -24,9 +24,21 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Message as MessageInter } from "@/app/page"
+import { cn } from "cn"
 
-export function MessagePattern({ messages }: { messages: MessageInter[] }) {
+export function MessagePattern({
+    messages,
+    className,
+}: {
+    messages: MessageInter[];
+    className?: string;
+}) {
     const [copied, setCopied] = React.useState(false)
+    const messagesEndRef = React.useRef<HTMLDivElement>(null)
+
+    React.useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }, [messages])
 
     React.useEffect(() => {
         if (!copied) {
@@ -38,7 +50,7 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
     }, [copied])
 
     return (
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 py-6 flex-1 overflow-y-scroll scrollbar-none text-sm">
+        <div className={cn("mx-auto flex w-full flex-col gap-6 py-4 flex-1 overflow-y-auto text-sm px-3", className)}>
             {messages.map((msg,idx) => (
                 <Message key={idx} align={msg.role == "user" ? "end" : "start"}>
                     <MessageContent className="gap-2">
@@ -78,7 +90,7 @@ export function MessagePattern({ messages }: { messages: MessageInter[] }) {
                     </MessageContent>
                 </Message>
             ))}
-
+            <div ref={messagesEndRef} />
         </div>
     )
 }

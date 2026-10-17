@@ -34,6 +34,8 @@ import {
     InputGroupTextarea,
 } from "@/components/ui/input-group"
 
+import { cn } from "cn"
+
 type AttachmentFile = {
     id: string
     name: string
@@ -41,10 +43,11 @@ type AttachmentFile = {
 
 const providers = [
     {
-        name: "OpenAI",
+        name: "Groq / OpenAI",
         models: [
-            { id: "gpt-5", name: "GPT-5" },
-            { id: "gpt-5-mini", name: "GPT-5 mini" },
+            { id: "gpt-oss-120b", name: "GPT-OSS 120B" },
+            { id: "llama-3.3-70b", name: "Llama 3.3 70B" },
+            { id: "mixtral-8x7b", name: "Mixtral 8x7B" },
         ],
     },
     {
@@ -64,7 +67,17 @@ const efforts = [
     { id: "high", name: "High" },
 ]
 
-export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string) => Promise<void> }) {
+export function PromptInputDemo({
+    onSubmitText,
+    className,
+    placeholder = "Ask anything about your code...",
+    externalText,
+}: {
+    onSubmitText: (text: string) => Promise<void>;
+    className?: string;
+    placeholder?: string;
+    externalText?: string;
+}) {
     const [text, setText] = React.useState("")
     const [files, setFiles] = React.useState<AttachmentFile[]>([])
     const [model, setModel] = React.useState(models[0].id)
@@ -74,6 +87,12 @@ export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string)
     const currentModel = models.find((item) => item.id === model) ?? models[0]
     const currentEffort = efforts.find((item) => item.id === effort) ?? efforts[1]
     const canSend = text.trim().length > 0
+
+    React.useEffect(() => {
+        if (externalText) {
+            setText(externalText);
+        }
+    }, [externalText]);
 
     function onSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault()
@@ -103,7 +122,7 @@ export function PromptInputDemo({ onSubmitText }: { onSubmitText: (text: string)
     }
 
     return (
-        <div className="mx-auto w-full max-w-lg py-6">
+        <div className={cn("mx-auto w-full py-4", className)}>
             <form ref={formRef} onSubmit={onSubmit} className="bg-background">
                 <input
                     ref={inputRef}
