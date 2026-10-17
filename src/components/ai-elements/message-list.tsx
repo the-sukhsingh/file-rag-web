@@ -53,10 +53,12 @@ export function MessagePattern({
         <div className={cn("mx-auto flex w-full flex-col gap-6 py-4 flex-1 overflow-y-auto text-sm px-3", className)}>
             {messages.map((msg,idx) => (
                 <Message key={idx} align={msg.role == "user" ? "end" : "start"}>
-                    <MessageContent className="gap-2">
-                        <Bubble align={msg.role == "user" ? "end" : "start"} variant={msg.role == "user" ? "muted" : "tinted"}>
-                            <BubbleContent>
-                                <Markdown>{msg.content}</Markdown>
+                    <MessageContent className="gap-2 max-w-full overflow-hidden">
+                        <Bubble align={msg.role == "user" ? "end" : "start"} variant={msg.role == "user" ? "muted" : "tinted"} className="max-w-full">
+                            <BubbleContent className="break-words overflow-x-auto text-xs max-w-full">
+                                <div className="prose prose-xs dark:prose-invert max-w-none break-words">
+                                    <Markdown>{msg.content}</Markdown>
+                                </div>
                             </BubbleContent>
                         </Bubble>
                         <MessageFooter>
