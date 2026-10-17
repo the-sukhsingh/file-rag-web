@@ -227,7 +227,7 @@ export function FileExplorer({
   });
 
   return (
-    <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground border-r border-border select-none">
+    <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground border-r border-border select-none overflow-hidden">
       {/* Hidden File Input for uploading files */}
       <input
         ref={fileInputRef}

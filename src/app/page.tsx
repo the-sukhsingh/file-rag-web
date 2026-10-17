@@ -189,11 +189,10 @@ export default function Home() {
       <ResizablePanelGroup direction="horizontal" className="h-full w-full">
         {/* 1. Left Panel: File Explorer */}
         <ResizablePanel
-          defaultSize={20}
-          minSize={14}
-          maxSize={32}
+          defaultSize="20%"
+          minSize="15%"
+          maxSize="35%"
           id="panel-explorer"
-          className="min-w-56"
         >
           <FileExplorer
             files={files}
@@ -210,10 +209,9 @@ export default function Home() {
 
         {/* 2. Center Panel: File Content Viewer & Editor */}
         <ResizablePanel
-          defaultSize={50}
-          minSize={30}
+          defaultSize="52%"
+          minSize="30%"
           id="panel-viewer"
-          className="min-w-80"
         >
           <FileViewer
             activeFile={activeFile}
@@ -222,7 +220,12 @@ export default function Home() {
             onCloseFile={handleCloseFile}
             onUpdateContent={handleUpdateContent}
             onOpenNewFileDialog={() => {
-              // Can select or add file
+              handleAddFile({
+                name: "untitled.ts",
+                path: "src/untitled.ts",
+                content: "// New file\n",
+                language: "typescript",
+              });
             }}
             onSendToChat={handleAskAboutFile}
           />
@@ -232,11 +235,10 @@ export default function Home() {
 
         {/* 3. Right Panel: Chatbot */}
         <ResizablePanel
-          defaultSize={30}
-          minSize={22}
-          maxSize={45}
+          defaultSize="28%"
+          minSize="20%"
+          maxSize="45%"
           id="panel-chatbot"
-          className="min-w-72"
         >
           <div className="flex h-full w-full flex-col bg-sidebar border-l border-border select-none">
             {/* Chatbot Header */}
