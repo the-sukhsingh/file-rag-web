@@ -2,12 +2,9 @@
 
 import * as React from "react";
 import {
+  ChevronRightIcon,
   FileIcon,
-  FileCodeIcon,
-  FileTextIcon,
-  FileJsonIcon,
   FolderIcon,
-  FolderOpenIcon,
   PlusIcon,
   Trash2Icon,
   Edit2Icon,
@@ -19,7 +16,11 @@ import {
   FilePlusIcon,
 } from "lucide-react";
 
-import { VirtualFile, detectLanguage } from "./types";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,6 +56,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { VirtualFile, FileNode, buildFileTree, detectLanguage } from "./types";
+
 interface FileExplorerProps {
   files: VirtualFile[];
   selectedFileId: string | null;
@@ -65,25 +68,132 @@ interface FileExplorerProps {
   onResetFiles?: () => void;
 }
 
-function getFileIcon(filename: string) {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "ts":
-    case "tsx":
-    case "js":
-    case "jsx":
-      return <FileCodeIcon className="size-4 text-blue-500 shrink-0" />;
-    case "json":
-      return <FileJsonIcon className="size-4 text-yellow-500 shrink-0" />;
-    case "md":
-    case "markdown":
-    case "txt":
-      return <FileTextIcon className="size-4 text-emerald-500 shrink-0" />;
-    case "css":
-    case "scss":
-      return <FileCodeIcon className="size-4 text-cyan-500 shrink-0" />;
-    default:
-      return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
+function FileTreeNode({
+  node,
+  selectedPath,
+  onSelect,
+  onRename,
+  onDelete,
+  onNewFileInFolder,
+}: {
+  node: FileNode;
+  selectedPath: string;
+  onSelect: (file: VirtualFile) => void;
+  onRename: (file: VirtualFile) => void;
+  onDelete: (file: VirtualFile) => void;
+  onNewFileInFolder: (folderPath: string) => void;
+}) {
+  switch (node.type) {
+    case "folder":
+      return (
+        <Collapsible defaultOpen>
+          <div className="group/folder flex items-center justify-between w-full rounded-md hover:bg-muted/50">
+            <CollapsibleTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50 text-xs h-7 px-2 gap-1.5"
+                >
+                  <ChevronRightIcon className="size-3.5 shrink-0 transition-transform duration-200 in-data-open:rotate-90 group-data-panel-open/button:rotate-90 group-aria-expanded/button:rotate-90" />
+                  <FolderIcon className="size-3.5 shrink-0 text-primary/80" />
+                  <span className="truncate">{node.name}</span>
+                </Button>
+              }
+            />
+            <div
+              className="opacity-0 group-hover/folder:opacity-100 transition-opacity pr-1.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-5 p-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => onNewFileInFolder(node.path)}
+                      aria-label={`Add file inside ${node.name}`}
+                    >
+                      <PlusIcon className="size-3" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>Add file in {node.name}</TooltipContent>
+              </Tooltip>
+            </div>
+          </div>
+          <CollapsibleContent>
+            <div className="ml-4 flex flex-col gap-0.5 border-l border-border/30 pl-1">
+              {node.children.map((child) => (
+                <FileTreeNode
+                  key={child.path}
+                  node={child}
+                  selectedPath={selectedPath}
+                  onSelect={onSelect}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                  onNewFileInFolder={onNewFileInFolder}
+                />
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      );
+    case "file": {
+      const isSelected = selectedPath === node.path;
+      return (
+        <div className="group/file relative flex items-center justify-between w-full rounded-md">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`w-full justify-start font-normal text-xs h-7 px-2 gap-2 ${
+              isSelected ? "bg-accent text-accent-foreground font-medium shadow-2xs" : "text-muted-foreground hover:text-foreground"
+            }`}
+            aria-current={isSelected ? "true" : undefined}
+            onClick={() => onSelect(node.file)}
+          >
+            <FileIcon className="size-3.5 shrink-0 text-muted-foreground group-hover/file:text-foreground" />
+            <span className="truncate" title={node.path}>{node.name}</span>
+          </Button>
+
+          {/* Action options on hover */}
+          <div
+            className="absolute right-1 opacity-0 group-hover/file:opacity-100 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="size-5 p-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <MoreVerticalIcon className="size-3" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-36">
+                <DropdownMenuItem onClick={() => onRename(node.file)}>
+                  <Edit2Icon className="size-3.5 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => onDelete(node.file)}>
+                  <Trash2Icon className="size-3.5 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      );
+    }
+    default: {
+      const unreachable: never = node;
+      return unreachable;
+    }
   }
 }
 
@@ -97,7 +207,6 @@ export function FileExplorer({
   onResetFiles,
 }: FileExplorerProps) {
   const [search, setSearch] = React.useState("");
-  const [collapsedFolders, setCollapsedFolders] = React.useState<Record<string, boolean>>({});
 
   // Dialog States
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = React.useState(false);
@@ -117,12 +226,8 @@ export function FileExplorer({
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const toggleFolder = (folderName: string) => {
-    setCollapsedFolders((prev) => ({
-      ...prev,
-      [folderName]: !prev[folderName],
-    }));
-  };
+  const selectedFile = files.find((f) => f.id === selectedFileId);
+  const selectedPath = selectedFile?.path ?? "";
 
   const handleCreateFile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,7 +257,6 @@ export function FileExplorer({
     const trimmed = newFolderName.trim();
     if (!trimmed) return;
 
-    // Create a placeholder .gitkeep inside folder so it appears in explorer
     const placeholderName = ".gitkeep";
     const fullPath = `${trimmed}/${placeholderName}`;
     onAddFile({
@@ -202,29 +306,21 @@ export function FileExplorer({
     e.target.value = "";
   };
 
-  // Group files by root folder / directory
+  const handleNewFileInFolder = (folderPath: string) => {
+    setNewFilePath(folderPath);
+    setNewFileName("");
+    setIsNewFileDialogOpen(true);
+  };
+
+  // Filter files by search
   const filteredFiles = files.filter(
     (f) =>
       f.name.toLowerCase().includes(search.toLowerCase()) ||
       f.path.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Organize into folder groups
-  const groups: { [key: string]: VirtualFile[] } = {};
-  filteredFiles.forEach((file) => {
-    const parts = file.path.split("/");
-    const folder = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : "";
-    if (!groups[folder]) {
-      groups[folder] = [];
-    }
-    groups[folder].push(file);
-  });
-
-  const sortedFolders = Object.keys(groups).sort((a, b) => {
-    if (a === "") return 1;
-    if (b === "") return -1;
-    return a.localeCompare(b);
-  });
+  // Build recursive tree from filtered files
+  const fileTree = React.useMemo(() => buildFileTree(filteredFiles), [filteredFiles]);
 
   return (
     <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground border-r border-border select-none overflow-hidden">
@@ -251,59 +347,70 @@ export function FileExplorer({
 
         <div className="flex items-center gap-1">
           <Tooltip>
-            <TooltipTrigger render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => setIsNewFileDialogOpen(true)}
-                aria-label="New File"
-              >
-                <FilePlusIcon className="size-3.5" />
-              </Button>
-            } />
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => {
+                    setNewFilePath("");
+                    setIsNewFileDialogOpen(true);
+                  }}
+                  aria-label="New File"
+                >
+                  <FilePlusIcon className="size-3.5" />
+                </Button>
+              }
+            />
             <TooltipContent>New File</TooltipContent>
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => setIsNewFolderDialogOpen(true)}
-                aria-label="New Folder"
-              >
-                <FolderPlusIcon className="size-3.5" />
-              </Button>
-            } />
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setIsNewFolderDialogOpen(true)}
+                  aria-label="New Folder"
+                >
+                  <FolderPlusIcon className="size-3.5" />
+                </Button>
+              }
+            />
             <TooltipContent>New Folder</TooltipContent>
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Upload Files"
-              >
-                <UploadIcon className="size-3.5" />
-              </Button>
-            } />
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Upload Files"
+                >
+                  <UploadIcon className="size-3.5" />
+                </Button>
+              }
+            />
             <TooltipContent>Upload Files</TooltipContent>
           </Tooltip>
 
           {onResetFiles && (
             <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={onResetFiles}
-                  aria-label="Reset Files"
-                >
-                  <RotateCcwIcon className="size-3.5" />
-                </Button>
-              } />
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={onResetFiles}
+                    aria-label="Reset Files"
+                  >
+                    <RotateCcwIcon className="size-3.5" />
+                  </Button>
+                }
+              />
               <TooltipContent>Reset to Sample Files</TooltipContent>
             </Tooltip>
           )}
@@ -334,8 +441,8 @@ export function FileExplorer({
       </div>
 
       {/* File Tree List */}
-      <ScrollArea className="flex-1 px-1 py-1.5">
-        {filteredFiles.length === 0 ? (
+      <ScrollArea className="flex-1 px-1.5 py-2">
+        {fileTree.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted-foreground">
             <p>No files found</p>
             {search && (
@@ -350,111 +457,38 @@ export function FileExplorer({
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-0.5">
-            {sortedFolders.map((folderPath) => {
-              const isRoot = folderPath === "";
-              const folderFiles = groups[folderPath];
-              const isCollapsed = collapsedFolders[folderPath] || false;
-
-              return (
-                <div key={folderPath || "root-folder"} className="flex flex-col">
-                  {!isRoot && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleFolder(folderPath)}
-                      className="group flex h-7 w-full items-center justify-start gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                    >
-                      {isCollapsed ? (
-                        <FolderIcon className="size-3.5 text-muted-foreground" />
-                      ) : (
-                        <FolderOpenIcon className="size-3.5 text-primary" />
-                      )}
-                      <span className="truncate">{folderPath}</span>
-                      <span className="ml-auto text-[10px] text-muted-foreground/60">
-                        {folderFiles.length}
-                      </span>
-                    </Button>
-                  )}
-
-                  {(!isCollapsed || isRoot) && (
-                    <div className={!isRoot ? "ml-3.5 pl-1.5 border-l border-border/40 flex flex-col gap-0.5" : "flex flex-col gap-0.5"}>
-                      {folderFiles.map((file) => {
-                        const isSelected = selectedFileId === file.id;
-
-                        return (
-                          <div
-                            key={file.id}
-                            className={`group relative flex items-center justify-between rounded-md px-2 py-1 text-xs transition-colors cursor-pointer ${
-                              isSelected
-                                ? "bg-accent text-accent-foreground font-medium shadow-xs"
-                                : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                            }`}
-                            onClick={() => onSelectFile(file)}
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              {getFileIcon(file.name)}
-                              <span className="truncate" title={file.path}>
-                                {file.name}
-                              </span>
-                            </div>
-
-                            {/* Item Actions */}
-                            <div
-                              className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <DropdownMenu>
-                                <DropdownMenuTrigger render={
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-xs"
-                                    className="size-5 p-0 text-muted-foreground hover:text-foreground"
-                                  >
-                                    <MoreVerticalIcon className="size-3" />
-                                  </Button>
-                                } />
-                                <DropdownMenuContent align="end" className="w-36">
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setFileToRename(file);
-                                      setRenameValue(file.name);
-                                    }}
-                                  >
-                                    <Edit2Icon className="size-3.5 mr-2" />
-                                    Rename
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => setFileToDelete(file)}
-                                  >
-                                    <Trash2Icon className="size-3.5 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-0.5 text-sm">
+            {fileTree.map((node) => (
+              <FileTreeNode
+                key={node.path}
+                node={node}
+                selectedPath={selectedPath}
+                onSelect={onSelectFile}
+                onRename={(file) => {
+                  setFileToRename(file);
+                  setRenameValue(file.name);
+                }}
+                onDelete={(file) => setFileToDelete(file)}
+                onNewFileInFolder={handleNewFileInFolder}
+              />
+            ))}
           </div>
         )}
       </ScrollArea>
 
-      {/* Explorer Footer summary */}
+      {/* Explorer Footer */}
       <div className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
-        <span>{files.length} {files.length === 1 ? "file" : "files"}</span>
+        <span>
+          {files.length} {files.length === 1 ? "file" : "files"}
+        </span>
         <Button
           variant="ghost"
           size="sm"
           className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
-          onClick={() => setIsNewFileDialogOpen(true)}
+          onClick={() => {
+            setNewFilePath("");
+            setIsNewFileDialogOpen(true);
+          }}
         >
           <PlusIcon className="size-3 mr-1" /> Add File
         </Button>
@@ -482,9 +516,11 @@ export function FileExplorer({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">Folder Path (Optional)</label>
+                <label className="text-xs font-medium text-foreground">
+                  Folder Path (Optional)
+                </label>
                 <Input
-                  placeholder="e.g. src/components"
+                  placeholder="e.g. app or components/ui"
                   value={newFilePath}
                   onChange={(e) => setNewFilePath(e.target.value)}
                 />
@@ -516,11 +552,13 @@ export function FileExplorer({
             </DialogHeader>
             <div className="flex flex-col gap-3 py-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-foreground">Folder Name / Path</label>
+                <label className="text-xs font-medium text-foreground">
+                  Folder Name / Path
+                </label>
                 <Input
                   autoFocus
                   required
-                  placeholder="e.g. src/hooks"
+                  placeholder="e.g. hooks or components/common"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
                 />
@@ -541,7 +579,10 @@ export function FileExplorer({
       </Dialog>
 
       {/* Rename File Dialog */}
-      <Dialog open={!!fileToRename} onOpenChange={(open) => !open && setFileToRename(null)}>
+      <Dialog
+        open={!!fileToRename}
+        onOpenChange={(open) => !open && setFileToRename(null)}
+      >
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleRenameConfirm}>
             <DialogHeader>
@@ -573,12 +614,16 @@ export function FileExplorer({
       </Dialog>
 
       {/* Delete Confirmation Alert Dialog */}
-      <AlertDialog open={!!fileToDelete} onOpenChange={(open) => !open && setFileToDelete(null)}>
+      <AlertDialog
+        open={!!fileToDelete}
+        onOpenChange={(open) => !open && setFileToDelete(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete &quot;{fileToDelete?.name}&quot;?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove &quot;{fileToDelete?.path}&quot;? This action will remove the file from your workspace.
+              Are you sure you want to remove &quot;{fileToDelete?.path}&quot;? This action
+              will remove the file from your workspace.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

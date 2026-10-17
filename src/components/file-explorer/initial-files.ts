@@ -2,9 +2,34 @@ import { VirtualFile } from "./types";
 
 export const INITIAL_FILES: VirtualFile[] = [
   {
+    id: "file-layout",
+    name: "layout.tsx",
+    path: "app/layout.tsx",
+    language: "typescript",
+    updatedAt: "10m ago",
+    content: `import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "File RAG Workspace",
+  description: "AI-powered code explorer and assistant",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}`,
+  },
+  {
     id: "file-page",
     name: "page.tsx",
-    path: "src/app/page.tsx",
+    path: "app/page.tsx",
     language: "typescript",
     updatedAt: "Just now",
     content: `"use client"
@@ -17,11 +42,39 @@ import { MessagePattern } from "@/components/ai-elements/message-list";
 import { PromptInputDemo } from "@/components/ai-elements/prompt-input";
 
 export default function Home() {
-  // 3-panel layout: File Explorer | Center Content Viewer | AI Chatbot
   return (
     <div className="h-dvh w-full overflow-hidden bg-background">
-      {/* Resizable 3-column architecture */}
+      {/* 3-panel layout: File Explorer | Center Content Viewer | AI Chatbot */}
     </div>
+  );
+}`,
+  },
+  {
+    id: "file-login",
+    name: "login-form.tsx",
+    path: "components/login-form.tsx",
+    language: "typescript",
+    updatedAt: "15m ago",
+    content: `"use client";
+
+import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+export function LoginForm() {
+  const [email, setEmail] = React.useState("");
+
+  return (
+    <form className="flex flex-col gap-4 max-w-sm mx-auto p-4 border rounded-lg">
+      <h2 className="text-lg font-bold">Sign In</h2>
+      <Input
+        type="email"
+        placeholder="Email address"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <Button type="submit">Continue</Button>
+    </form>
   );
 }`,
   },
@@ -88,7 +141,7 @@ export class RagEngine {
   {
     id: "file-button",
     name: "button.tsx",
-    path: "src/components/ui/button.tsx",
+    path: "components/ui/button.tsx",
     language: "typescript",
     updatedAt: "1h ago",
     content: `import * as React from "react"
