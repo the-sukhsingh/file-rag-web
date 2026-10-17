@@ -8,34 +8,21 @@ import {
   FileIcon,
   CopyIcon,
   CheckIcon,
-  SaveIcon,
   EyeIcon,
-  Code2Icon,
+  PencilIcon,
   XIcon,
   PlusIcon,
   SparklesIcon,
 } from "lucide-react";
 
+import { cn } from "cn";
 import { VirtualFile } from "./types";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
   CodeBlock,
-  CodeBlockActions,
   CodeBlockContent,
-  CodeBlockCopyButton,
-  CodeBlockHeader,
-  CodeBlockTitle,
 } from "@/components/ui/code-block";
 import {
   Tooltip,
@@ -60,15 +47,15 @@ function getFileIcon(filename: string) {
     case "tsx":
     case "js":
     case "jsx":
-      return <FileCodeIcon className="size-4 text-blue-500 shrink-0" />;
+      return <FileCodeIcon className="size-3.5 text-blue-500 shrink-0" />;
     case "json":
-      return <FileJsonIcon className="size-4 text-yellow-500 shrink-0" />;
+      return <FileJsonIcon className="size-3.5 text-yellow-500 shrink-0" />;
     case "md":
     case "markdown":
     case "txt":
-      return <FileTextIcon className="size-4 text-emerald-500 shrink-0" />;
+      return <FileTextIcon className="size-3.5 text-emerald-500 shrink-0" />;
     default:
-      return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
+      return <FileIcon className="size-3.5 text-muted-foreground shrink-0" />;
   }
 }
 
@@ -108,24 +95,27 @@ export function FileViewer({
 
   if (!activeFile) {
     return (
-      <div className="flex h-full w-full items-center justify-center p-8 bg-background">
-        <Empty className="max-w-md border border-dashed border-border/80 p-8 shadow-xs rounded-xl bg-card">
-          <EmptyMedia variant="icon" className="size-12 rounded-xl bg-primary/10 text-primary">
-            <FileCodeIcon className="size-6 text-primary" />
-          </EmptyMedia>
-          <EmptyHeader>
-            <EmptyTitle className="text-base font-semibold">No File Selected</EmptyTitle>
-            <EmptyDescription className="text-xs text-muted-foreground">
-              Select a file from the explorer on the left or create a new file to preview and edit its content.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent className="mt-2 flex flex-row gap-2">
-            <Button size="sm" onClick={onOpenNewFileDialog} className="gap-1.5 text-xs">
+      <div className="flex h-full w-full items-center justify-center p-8 bg-background select-none">
+        <div className="flex flex-col items-center justify-center text-center max-w-sm">
+          <div className="size-10 rounded-xl bg-muted/40 flex items-center justify-center mb-3 text-muted-foreground/60">
+            <FileCodeIcon className="size-5" />
+          </div>
+          <p className="text-sm font-medium text-foreground">No file selected</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Choose a file from the explorer on the left to preview or edit.
+          </p>
+          {onOpenNewFileDialog && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenNewFileDialog}
+              className="mt-4 gap-1.5 text-xs h-7"
+            >
               <PlusIcon className="size-3.5" />
               New File
             </Button>
-          </EmptyContent>
-        </Empty>
+          )}
+        </div>
       </div>
     );
   }
@@ -135,164 +125,169 @@ export function FileViewer({
 
   return (
     <div className="flex h-full w-full flex-col bg-background overflow-hidden">
-      {/* Open Files Tabs Bar */}
-      {openFiles.length > 0 && (
-        <div className="flex items-center overflow-x-auto border-b border-border bg-muted/30 px-2 pt-1 scrollbar-none">
-          <div className="flex items-center gap-1">
-            {openFiles.map((file) => {
-              const isActive = file.id === activeFile.id;
-              return (
-                <div
-                  key={file.id}
-                  onClick={() => onSelectFile(file)}
-                  className={`group flex items-center gap-2 rounded-t-md px-3 py-1.5 text-xs font-medium border-t border-x transition-colors cursor-pointer select-none ${
-                    isActive
-                      ? "bg-background text-foreground border-border shadow-xs"
-                      : "bg-muted/40 text-muted-foreground border-transparent hover:bg-muted/80 hover:text-foreground"
-                  }`}
+      {/* Sleek unified Tab and Action Bar */}
+      <div className="flex h-10 w-full items-center justify-between border-b border-border/60 bg-muted/15 px-2 select-none shrink-0">
+        {/* Left: Open File Tabs */}
+        <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+          {openFiles.map((file) => {
+            const isActive = file.id === activeFile.id;
+            return (
+              <button
+                key={file.id}
+                type="button"
+                onClick={() => onSelectFile(file)}
+                className={cn(
+                  "group relative flex h-8 items-center gap-2 rounded-t-md px-2.5 text-xs font-medium transition-colors cursor-pointer",
+                  isActive
+                    ? "bg-background text-foreground shadow-2xs font-medium"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                )}
+              >
+                {getFileIcon(file.name)}
+                <span className="truncate max-w-36">{file.name}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="rounded p-0.5 opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseFile(file.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      onCloseFile(file.id);
+                    }
+                  }}
                 >
-                  {getFileIcon(file.name)}
-                  <span className="truncate max-w-32">{file.name}</span>
+                  <XIcon className="size-3" />
+                </span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-primary rounded-full" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right: Minimal Actions & File Meta */}
+        <div className="flex items-center gap-1.5 pl-2 shrink-0">
+          <span className="text-[11px] font-mono text-muted-foreground/60 uppercase hidden sm:inline">
+            {activeFile.language}
+          </span>
+          <span className="text-muted-foreground/30 hidden sm:inline">•</span>
+          <span className="text-[11px] font-mono text-muted-foreground/60 hidden sm:inline">
+            {lineCount} {lineCount === 1 ? "line" : "lines"}
+          </span>
+
+          {isDirty && (
+            <span className="size-1.5 rounded-full bg-amber-500" title="Unsaved changes" />
+          )}
+
+          <div className="h-3.5 w-px bg-border/60 mx-1 hidden sm:block" />
+
+          {/* Ask AI */}
+          {onSendToChat && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="size-4 p-0 opacity-40 hover:opacity-100 hover:bg-muted rounded"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseFile(file.id);
-                    }}
+                    onClick={() => onSendToChat(activeFile)}
+                    aria-label="Ask AI about this file"
+                    className="size-7 text-muted-foreground hover:text-primary"
                   >
-                    <XIcon className="size-3" />
+                    <SparklesIcon className="size-3.5" />
                   </Button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* File Action & Info Bar */}
-      <div className="flex items-center justify-between border-b border-border/80 px-4 py-2 bg-card/60 backdrop-blur-xs">
-        <div className="flex items-center gap-2.5 min-w-0">
-          {getFileIcon(activeFile.name)}
-          <span className="text-xs font-semibold text-foreground truncate">
-            {activeFile.path}
-          </span>
-          <Badge variant="outline" className="px-1.5 py-0 text-[10px] uppercase font-mono">
-            {activeFile.language}
-          </Badge>
-          <span className="text-[11px] text-muted-foreground hidden sm:inline">
-            {lineCount} {lineCount === 1 ? "line" : "lines"}
-          </span>
-          {isDirty && (
-            <Badge variant="secondary" className="px-1.5 py-0 text-[10px] text-amber-500 bg-amber-500/10">
-              Unsaved changes
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Ask AI about this file */}
-          {onSendToChat && (
-            <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSendToChat(activeFile)}
-                  className="h-7 text-xs gap-1.5 text-primary border-primary/30 hover:bg-primary/10"
-                >
-                  <SparklesIcon className="size-3.5 text-primary" />
-                  <span className="hidden md:inline">Ask AI</span>
-                </Button>
-              } />
-              <TooltipContent>Discuss this file with AI</TooltipContent>
+                }
+              />
+              <TooltipContent>Ask AI about this file</TooltipContent>
             </Tooltip>
           )}
 
-          {/* Toggle Edit Mode */}
-          <Button
-            variant={isEditing ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setIsEditing(!isEditing)}
-            className="h-7 text-xs gap-1"
-          >
-            {isEditing ? (
-              <>
-                <EyeIcon className="size-3.5" />
-                <span>Preview</span>
-              </>
-            ) : (
-              <>
-                <Code2Icon className="size-3.5" />
-                <span>Edit</span>
-              </>
-            )}
-          </Button>
+          {/* Edit / Preview Toggle */}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant={isEditing ? "secondary" : "ghost"}
+                  size="icon-xs"
+                  onClick={() => setIsEditing(!isEditing)}
+                  aria-label={isEditing ? "Preview Mode" : "Edit File"}
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                >
+                  {isEditing ? (
+                    <EyeIcon className="size-3.5" />
+                  ) : (
+                    <PencilIcon className="size-3.5" />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>{isEditing ? "Switch to Preview" : "Edit File"}</TooltipContent>
+          </Tooltip>
 
-          {/* Save Button (when editing) */}
+          {/* Save Button if editing */}
           {isEditing && (
             <Button
               variant="default"
-              size="sm"
+              size="xs"
               onClick={handleSave}
-              className="h-7 text-xs gap-1 bg-primary text-primary-foreground"
+              className="h-6 text-xs px-2 gap-1 bg-primary text-primary-foreground"
             >
-              <SaveIcon className="size-3.5" />
+              <CheckIcon className="size-3" />
               <span>Save</span>
             </Button>
           )}
 
           {/* Copy Button */}
           <Tooltip>
-            <TooltipTrigger render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={handleCopy}
-                aria-label="Copy code"
-                className="size-7"
-              >
-                {isCopied ? (
-                  <CheckIcon className="size-3.5 text-emerald-500" />
-                ) : (
-                  <CopyIcon className="size-3.5" />
-                )}
-              </Button>
-            } />
-            <TooltipContent>{isCopied ? "Copied!" : "Copy file content"}</TooltipContent>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleCopy}
+                  aria-label="Copy file content"
+                  className="size-7 text-muted-foreground hover:text-foreground"
+                >
+                  {isCopied ? (
+                    <CheckIcon className="size-3.5 text-emerald-500" />
+                  ) : (
+                    <CopyIcon className="size-3.5" />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>{isCopied ? "Copied!" : "Copy code"}</TooltipContent>
           </Tooltip>
         </div>
       </div>
 
-      {/* File Content Area */}
-      <div className="flex-1 overflow-hidden relative">
+      {/* Code Preview / Editor Area - Clean & Minimal */}
+      <div className="flex-1 overflow-hidden relative bg-background">
         {isEditing ? (
-          <div className="flex h-full w-full flex-col p-3">
+          <div className="h-full w-full">
             <Textarea
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               placeholder="Write your code or document content here..."
-              className="flex-1 font-mono text-xs leading-relaxed p-4 resize-none rounded-lg bg-card focus-visible:ring-1 border-border/80"
+              className="h-full w-full font-mono text-xs leading-relaxed p-4 resize-none border-0 rounded-none bg-transparent focus-visible:ring-0 focus-visible:outline-none"
               spellCheck={false}
             />
           </div>
         ) : (
           <ScrollArea className="h-full w-full">
-            <div className="p-4">
-              <CodeBlock variant="default" className="rounded-lg border border-border/80 shadow-xs bg-muted/20">
-                <CodeBlockHeader className="border-b border-border/60 pb-2 bg-muted/30">
-                  <CodeBlockTitle className="text-xs text-muted-foreground flex items-center gap-1.5">
-                    {activeFile.name}
-                  </CodeBlockTitle>
-                  <CodeBlockActions>
-                    <CodeBlockCopyButton value={activeFile.content} />
-                  </CodeBlockActions>
-                </CodeBlockHeader>
+            <div className="min-h-full py-2">
+              <CodeBlock
+                variant="default"
+                className="border-0 rounded-none bg-transparent shadow-none"
+              >
                 <CodeBlockContent
                   lineNumbers
                   wrap
-                  className="p-4 text-xs font-mono leading-relaxed bg-transparent"
+                  className="px-4 py-2 text-xs font-mono leading-relaxed bg-transparent"
                 >
                   {activeFile.content}
                 </CodeBlockContent>
