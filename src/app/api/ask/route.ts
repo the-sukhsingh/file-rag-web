@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateText } from "ai";
 import { createGroq } from "@ai-sdk/groq";
-import { createBashTool } from "bash-tool";
+// import { createBashTool } from "bash-tool";
 
 export const runtime = "nodejs";
 
@@ -22,13 +22,14 @@ export async function POST(request: Request) {
             );
         }
 
-        const { tools } = await createBashTool({
-            files: {
-                "src/index.ts": "export const x = 1;",
-            },
-        });
+        // TODO: I got error here
+        // const { tools } = await createBashTool({
+        //     files: {
+        //         "src/index.ts": "export const x = 1;",
+        //     },
+        // });
 
-        console.log("tools created", tools);
+        // console.log("tools created", tools);
 
         const response = await generateText({
             model,
