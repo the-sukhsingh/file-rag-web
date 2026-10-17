@@ -4,7 +4,7 @@ export const INITIAL_FILES: VirtualFile[] = [
   {
     id: "file-layout",
     name: "layout.tsx",
-    path: "app/layout.tsx",
+    path: "src/app/layout.tsx",
     language: "typescript",
     updatedAt: "10m ago",
     content: `import type { Metadata } from "next";
@@ -29,7 +29,7 @@ export default function RootLayout({
   {
     id: "file-page",
     name: "page.tsx",
-    path: "app/page.tsx",
+    path: "src/app/page.tsx",
     language: "typescript",
     updatedAt: "Just now",
     content: `"use client"
@@ -52,7 +52,7 @@ export default function Home() {
   {
     id: "file-login",
     name: "login-form.tsx",
-    path: "components/login-form.tsx",
+    path: "src/components/login-form.tsx",
     language: "typescript",
     updatedAt: "15m ago",
     content: `"use client";
@@ -141,7 +141,7 @@ export class RagEngine {
   {
     id: "file-button",
     name: "button.tsx",
-    path: "components/ui/button.tsx",
+    path: "src/components/ui/button.tsx",
     language: "typescript",
     updatedAt: "1h ago",
     content: `import * as React from "react"
