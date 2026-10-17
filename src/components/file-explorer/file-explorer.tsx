@@ -21,6 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -68,6 +69,85 @@ interface FileExplorerProps {
   onResetFiles?: () => void;
 }
 
+function FolderTreeNode({
+  node,
+  selectedPath,
+  onSelect,
+  onRename,
+  onDelete,
+  onNewFileInFolder,
+}: {
+  node: Extract<FileNode, { type: "folder" }>;
+  selectedPath: string;
+  onSelect: (file: VirtualFile) => void;
+  onRename: (file: VirtualFile) => void;
+  onDelete: (file: VirtualFile) => void;
+  onNewFileInFolder: (folderPath: string) => void;
+}) {
+  const [isOpen, setIsOpen] = React.useState(true);
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <div className="group/folder flex items-center justify-between w-full rounded-md hover:bg-muted/50">
+        <CollapsibleTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start font-normal text-xs h-7 px-2 gap-1.5"
+            >
+              <ChevronRightIcon
+                className={cn(
+                  "size-3.5 shrink-0 transition-transform duration-200",
+                  isOpen && "rotate-90"
+                )}
+              />
+              <FolderIcon className="size-3.5 shrink-0 text-primary/80" />
+              <span className="truncate">{node.name}</span>
+            </Button>
+          }
+        />
+        <div
+          className="opacity-0 group-hover/folder:opacity-100 transition-opacity pr-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-5 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => onNewFileInFolder(node.path)}
+                  aria-label={`Add file inside ${node.name}`}
+                >
+                  <PlusIcon className="size-3" />
+                </Button>
+              }
+            />
+            <TooltipContent>Add file in {node.name}</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+      <CollapsibleContent>
+        <div className="ml-4 flex flex-col gap-0.5 border-l border-border/30 pl-1">
+          {node.children.map((child) => (
+            <FileTreeNode
+              key={child.path}
+              node={child}
+              selectedPath={selectedPath}
+              onSelect={onSelect}
+              onRename={onRename}
+              onDelete={onDelete}
+              onNewFileInFolder={onNewFileInFolder}
+            />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function FileTreeNode({
   node,
   selectedPath,
@@ -86,59 +166,14 @@ function FileTreeNode({
   switch (node.type) {
     case "folder":
       return (
-        <Collapsible defaultOpen>
-          <div className="group/folder flex items-center justify-between w-full rounded-md hover:bg-muted/50">
-            <CollapsibleTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50 text-xs h-7 px-2 gap-1.5"
-                >
-                  <ChevronRightIcon className="size-3.5 shrink-0 transition-transform duration-200 in-data-open:rotate-90 group-data-panel-open/button:rotate-90 group-aria-expanded/button:rotate-90" />
-                  <FolderIcon className="size-3.5 shrink-0 text-primary/80" />
-                  <span className="truncate">{node.name}</span>
-                </Button>
-              }
-            />
-            <div
-              className="opacity-0 group-hover/folder:opacity-100 transition-opacity pr-1.5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-5 p-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => onNewFileInFolder(node.path)}
-                      aria-label={`Add file inside ${node.name}`}
-                    >
-                      <PlusIcon className="size-3" />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Add file in {node.name}</TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-          <CollapsibleContent>
-            <div className="ml-4 flex flex-col gap-0.5 border-l border-border/30 pl-1">
-              {node.children.map((child) => (
-                <FileTreeNode
-                  key={child.path}
-                  node={child}
-                  selectedPath={selectedPath}
-                  onSelect={onSelect}
-                  onRename={onRename}
-                  onDelete={onDelete}
-                  onNewFileInFolder={onNewFileInFolder}
-                />
-              ))}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+        <FolderTreeNode
+          node={node}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          onRename={onRename}
+          onDelete={onDelete}
+          onNewFileInFolder={onNewFileInFolder}
+        />
       );
     case "file": {
       const isSelected = selectedPath === node.path;
