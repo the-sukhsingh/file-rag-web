@@ -433,7 +433,7 @@ export function FileExplorer({
       </div>
 
       {/* File Tree List */}
-      <ScrollArea className="flex-1 px-1.5 py-2">
+      <ScrollArea className="min-h-0 flex-1 px-1.5 py-2">
         {fileTree.length === 0 ? (
           search ? (
             <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted-foreground">
