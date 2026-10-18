@@ -78,7 +78,6 @@ function toCommandReport(
   output: unknown
 ): CommandReport {
   const result = (output ?? {}) as {
-    command?: unknown;
     stdout?: unknown;
     stderr?: unknown;
     exitCode?: unknown;
@@ -86,12 +85,8 @@ function toCommandReport(
     success?: unknown;
   };
 
-  // The workspace tools report the exact shell line they ran, which is more
-  // accurate than re-deriving one from the tool name and its arguments.
-  const command =
-    typeof result.command === "string"
-      ? result.command
-      : describeCall(call.toolName, call.input);
+  // For the bash tool this is exactly the command the model sent.
+  const command = describeCall(call.toolName, call.input);
 
   if (
     typeof result.stdout === "string" ||

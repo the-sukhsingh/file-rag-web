@@ -7,22 +7,26 @@ import {
   workspaceSnapshot,
   type VfsFileInput,
 } from "@/lib/server/vfs";
-import { createWorkspaceTools } from "@/lib/workspace-tools";
 
 /**
- * Binds the server-side virtual file system to the tools the model can call.
+ * Binds the server-side virtual file system to the single tool the model calls.
  *
- * Two layers are merged:
+ * The agent does not get one tool per command. It gets `bash`, and it sends the
+ * whole command - a complete shell line, pipeline or multi-command script - in
+ * one call. Listing, searching and reading are all the same tool:
  *
- * - `bash`, `readFile` and `writeFile` from bash-tool, which run arbitrary
- *   commands and stream whole files.
- * - The retrieval tools from `workspace-tools` (`ls`, `tree`, `find`, `grep`,
- *   `cat`, `head`, `tail`, `wc`), the commands a model reaches for by name when
- *   it goes looking for information. Providers reject a tool call whose name
- *   was never advertised, so those names have to exist as tools too.
+ *   ls -R
+ *   grep -rn "cache key" . | head -20
+ *   cat 'Chapter 1/chunk-004.md'
  *
- * Files are materialized into the session sandbox before the tools are handed
- * over, so every tool operates on the real workspace paths the client uploaded.
+ * That keeps the tool block to one schema, so every step of the agent loop
+ * carries a fraction of the prompt a per-command tool set costs, and it lets the
+ * model gather everything it needs in one round trip instead of one call per
+ * command. `ls`, `grep` and `cat` stay shell commands; naming them as tools is
+ * what the provider rejects.
+ *
+ * Files are materialized into the session sandbox before the tool is handed
+ * over, so commands operate on the real workspace paths the client uploaded.
  */
 
 /** Hard ceiling on tool calls per user turn, so one question cannot loop. */
@@ -32,9 +36,11 @@ export const MAX_AGENT_STEPS = 6;
 export const AGENT_INSTRUCTIONS = [
   "The workspace mirrors the user's imported documents: one folder per chapter",
   "and one markdown file per chunk, all under the working directory.",
-  "Search before you answer: use the grep tool to find a keyword, then the cat,",
-  "head or tail tool to read the matching chunks. Never invent file paths or",
-  "contents, and quote the paths you actually read so the user can open them.",
+  "Send the whole command in one call: `ls -R` for the structure, then",
+  "`grep -rn \"keyword\" .` to locate text, then `cat` the matching file to read",
+  "it. Batch whatever you need into a single pipeline or script rather than",
+  "spending a round trip per command. Never invent file paths or contents, and",
+  "quote the paths you actually read so the user can open them.",
 ].join(" ");
 
 export interface WorkspaceToolkit {
@@ -51,15 +57,17 @@ export interface WorkspaceToolkit {
 }
 
 /**
- * Tells the model which tool names exist. Naming them explicitly, and saying
- * that anything else aborts the request, is what keeps the model from
- * inventing a tool the provider then rejects.
+ * Spells out that the listed names are the only callable tools, and that the
+ * commands the agent reaches for are arguments to them. Calling a command by
+ * name makes the provider reject the whole request, so this rule is stated in
+ * both the populated and the empty-workspace prompts.
  */
 export function buildToolNameRule(toolNames: string[]): string {
   return [
     `Available tools, by exact name: ${toolNames.join(", ")}.`,
-    "Call only those names - the provider rejects the whole request when a tool",
-    "you call was not advertised.",
+    "Every retrieval action is a bash command you pass to it - `ls`, `grep`,",
+    "`cat`, `find`, `head` and `tail` are commands, not tools, and the provider",
+    "rejects the request when one is called by name.",
   ].join(" ");
 }
 
@@ -80,10 +88,9 @@ export async function createWorkspaceToolkit({
     extraInstructions: AGENT_INSTRUCTIONS,
   });
 
-  const tools: ToolSet = {
-    ...bashTools,
-    ...createWorkspaceTools(sessionId),
-  };
+  // One tool. bash-tool also offers readFile and writeFile, but `cat` and shell
+  // redirection already cover both through the same single schema.
+  const tools: ToolSet = { bash: bashTools.bash };
 
   return {
     tools,
@@ -106,7 +113,7 @@ export function buildWorkspaceSystemPrompt(toolkit: WorkspaceToolkit): string {
   const { workingDirectory, fileCount, folderCount } = toolkit.workspace;
 
   return [
-    "You are a document retrieval assistant with access to a virtual file system.",
+    "You are a document retrieval assistant with shell access to a virtual file system.",
     "",
     `The file system is mounted at ${workingDirectory} (your current working directory).`,
     `It holds ${fileCount} file(s) across ${folderCount} folder(s) in markdown.`,
