@@ -41,10 +41,17 @@ import { ImportPdfDialog } from "@/components/file-explorer/import-pdf-dialog";
 import { PdfImportResult } from "@/lib/pdf";
 import { MessagePattern } from "@/components/ai-elements/message-list";
 import { PromptInputDemo } from "@/components/ai-elements/prompt-input";
+import {
+  loadOrCreateSessionId,
+  type AskResponse,
+  type CommandReport,
+} from "@/lib/chat";
 
 export interface Message {
   role: "assistant" | "user";
   content: string;
+  /** Bash commands the server ran against its workspace for this reply. */
+  commands?: CommandReport[];
 }
 
 export default function Home() {
@@ -150,6 +157,10 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          sessionId: loadOrCreateSessionId(),
+          // Ship the workspace so the server can mirror it into its own
+          // virtual file system before running bash commands over it.
+          files: files.map(({ path, content }) => ({ path, content })),
           messages: [
             ...messages.map((m) => ({ role: m.role, content: m.content })),
             { role: "user", content: promptWithContext },
@@ -157,9 +168,12 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as AskResponse;
       const reply = data.message || data.error || "No response received";
-      setMessages([...newMessages, { role: "assistant", content: reply }]);
+      setMessages([
+        ...newMessages,
+        { role: "assistant", content: reply, commands: data.commands },
+      ]);
     } catch (error) {
       console.error("Chat Error:", error);
       setMessages([
