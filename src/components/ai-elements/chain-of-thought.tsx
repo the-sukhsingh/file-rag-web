@@ -97,11 +97,14 @@ function StatusIcon({ status }: { status?: "running" | "error" }) {
 function StepRow({ step }: { step: Step }) {
     const status = step.running ? "running" : step.failed ? "error" : undefined
 
+    // Closed by default: the command is the headline, its output is on demand.
     return (
-        <TraceCollapsible defaultOpen>
+        <TraceCollapsible>
             <TraceCollapsibleTrigger>
                 <TraceLine status={status}>
-                    <TraceIcon>{step.icon}</TraceIcon>
+                    <TraceIcon>
+                        {status ? <StatusIcon status={status} /> : step.icon}
+                    </TraceIcon>
                     <TraceTitle title={step.command} className="font-mono">
                         {step.title}
                     </TraceTitle>
@@ -119,10 +122,10 @@ function StepRow({ step }: { step: Step }) {
 }
 
 /**
- * The agent's whole reasoning trail for one reply: every command it ran against
- * the server workspace, with the output each one returned. A step shows a
- * spinner from the moment its call streams in until its output lands, and the
- * whole trail is open by default and collapsible when the outputs get long.
+ * The agent's reasoning trail for one reply: one row per command it ran against
+ * the server workspace, each closed by default. The collapsed rows say which
+ * commands were sent without burying the answer under their output; opening a
+ * row shows what that command returned.
  */
 export function ChainOfThought({
     commands,
@@ -132,35 +135,12 @@ export function ChainOfThought({
     className?: string
 }) {
     const steps = React.useMemo(() => commands.map(toStep), [commands])
-    const running = steps.some((step) => step.running)
-    const failed = steps.filter((step) => step.failed).length
-    const status = running ? "running" : failed > 0 ? "error" : undefined
 
     return (
         <Trace className={cn("text-xs", className)}>
-            <TraceCollapsible defaultOpen>
-                <TraceCollapsibleTrigger>
-                    <TraceLine status={status}>
-                        <TraceIcon>
-                            <StatusIcon status={status} />
-                        </TraceIcon>
-                        <TraceTitle>
-                            {running
-                                ? "Working through the workspace"
-                                : failed > 0
-                                  ? `Ran ${steps.length} steps, ${failed} failed`
-                                  : `Ran ${steps.length} step${steps.length === 1 ? "" : "s"}`}
-                        </TraceTitle>
-                    </TraceLine>
-                </TraceCollapsibleTrigger>
-                <TraceCollapsibleContent>
-                    <Trace>
-                        {steps.map((step, index) => (
-                            <StepRow key={`${step.command}-${index}`} step={step} />
-                        ))}
-                    </Trace>
-                </TraceCollapsibleContent>
-            </TraceCollapsible>
+            {steps.map((step, index) => (
+                <StepRow key={`${step.command}-${index}`} step={step} />
+            ))}
         </Trace>
     )
 }
