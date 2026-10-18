@@ -135,7 +135,7 @@ export function ImportPdfDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import PDF</DialogTitle>
           <DialogDescription>
@@ -220,7 +220,7 @@ export function ImportPdfDialog({
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <CheckCircle2Icon className="size-3.5 text-emerald-500" />
-              <span className="truncate font-medium text-foreground">
+              <span className="min-w-0 max-w-full truncate font-medium text-foreground">
                 {result.fileName}
               </span>
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
@@ -253,8 +253,10 @@ export function ImportPdfDialog({
                     className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50"
                   >
                     <FolderIcon className="size-3.5 shrink-0 text-primary/80" />
-                    <span className="truncate">{chapter.title}</span>
-                    <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate" title={chapter.title}>
+                      {chapter.title}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                       p. {chapter.startPage}-{chapter.endPage} ·{" "}
                       {pluralize(chapter.chunkCount, "chunk")}
                     </span>
