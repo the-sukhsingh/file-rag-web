@@ -1,6 +1,7 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
 import { VirtualFile } from "@/components/file-explorer/types";
+import { pluralize } from "@/lib/utils";
 
 /**
  * Client-side PDF indexing pipeline.
@@ -354,11 +355,16 @@ function buildFiles(
   const takenFolderNames = new Set<string>();
 
   sections.forEach((section, sectionIndex) => {
-    const folder = uniqueFolderName(section.title, sectionIndex, takenFolderNames);
     const text = pageTexts
       .slice(section.startPageIndex, section.endPageIndex + 1)
       .join("\n\n");
     const chunks = chunkText(text);
+
+    // Chapters without any extractable text (image-only pages) have nothing to
+    // index, so they should not show up as empty folders.
+    if (chunks.length === 0) return;
+
+    const folder = uniqueFolderName(section.title, sectionIndex, takenFolderNames);
 
     chunks.forEach((chunk, chunkIndex) => {
       files.push({
@@ -404,7 +410,7 @@ export async function importPdf(
   try {
     const pageCount = doc.numPages;
 
-    report("loading", 5, `Opened ${pageCount} page${pageCount === 1 ? "" : "s"}`);
+    report("loading", 5, `Opened ${pluralize(pageCount, "page")}`);
 
     const pageTexts: string[] = [];
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
@@ -440,12 +446,16 @@ export async function importPdf(
       fallbackTitle
     );
 
-    report("chunking", 92, `Chunking ${sections.length} chapter${sections.length === 1 ? "" : "s"}`);
+    report(
+      "chunking",
+      92,
+      `Chunking ${pluralize(sections.length, "chapter")}`
+    );
 
     const { files, chapters } = buildFiles(sections, pageTexts, Date.now());
     await yieldToBrowser();
 
-    report("chunking", 100, `Created ${files.length} chunks`);
+    report("chunking", 100, `Created ${pluralize(files.length, "chunk")}`);
 
     return { fileName: file.name, pageCount, chapters, files, usedOutline };
   } finally {
