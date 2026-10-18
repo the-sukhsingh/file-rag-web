@@ -12,6 +12,7 @@ import {
   normalizeSessionId,
   type VfsFileInput,
 } from "@/lib/server/vfs";
+import type { CommandReport } from "@/lib/chat";
 
 export const runtime = "nodejs";
 
@@ -23,16 +24,6 @@ const groq = createGroq({
 });
 
 const model = groq("openai/gpt-oss-120b");
-
-/** One bash/tool invocation, reported back to the client. */
-export interface CommandReport {
-  tool: string;
-  command: string;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  truncated?: boolean;
-}
 
 interface ToolCallLike {
   toolCallId: string;
