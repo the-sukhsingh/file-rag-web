@@ -4,7 +4,6 @@ import * as React from "react"
 import {
     CircleAlertIcon,
     CircleCheckIcon,
-    FilePenLineIcon,
     FileTextIcon,
     FolderTreeIcon,
     HashIcon,
@@ -27,7 +26,7 @@ import { cn } from "cn"
 
 /** One reported tool call, shaped for the trace UI. */
 interface Step {
-    /** Trigger label, e.g. `Read docs/chunk-001.md`. */
+    /** Trigger label, e.g. `Ran grep -rn "bm25" .`. */
     title: string
     /** The exact command, shown on hover so the label stays readable. */
     command: string
@@ -37,43 +36,41 @@ interface Step {
     failed: boolean
 }
 
-/** Icon per tool, so a trace of many steps still scans quickly. */
-const STEP_ICONS: Record<string, React.ReactNode> = {
-    readFile: <FileTextIcon />,
-    cat: <FileTextIcon />,
-    head: <FileTextIcon />,
-    tail: <FileTextIcon />,
-    writeFile: <FilePenLineIcon />,
-    grep: <SearchIcon />,
-    find: <SearchIcon />,
+/**
+ * The agent sends whole commands, so the icon comes from the command it chose
+ * rather than from a tool name: a trace of many steps still scans quickly.
+ */
+const COMMAND_ICONS: Record<string, React.ReactNode> = {
     ls: <FolderTreeIcon />,
     tree: <FolderTreeIcon />,
+    find: <SearchIcon />,
+    grep: <SearchIcon />,
+    rg: <SearchIcon />,
+    cat: <FileTextIcon />,
+    nl: <FileTextIcon />,
+    sed: <FileTextIcon />,
+    head: <FileTextIcon />,
+    tail: <FileTextIcon />,
     wc: <HashIcon />,
-    bash: <TerminalIcon />,
 }
 
-/**
- * Turns a `CommandReport` into a step. File tools arrive as pseudo commands
- * (`cat docs/chunk-001.md`), so the path is stripped back out of them.
- */
+/** First word of the command: what the step actually did. */
+function commandHead(command: string): string {
+    return command.trim().split(/\s+/)[0]?.replace(/^["']/, "") ?? ""
+}
+
 function toStep(report: CommandReport): Step {
-    const path = report.command.replace(/^(?:cat|writeFile)\s+/, "")
+    const head = commandHead(report.command)
     const stdout = report.stdout.trim()
     const error = report.stderr.trim()
 
     // `grep` exits 1 when nothing matched. That is an answer, not a failure.
-    const noMatches =
-        report.tool === "grep" && report.exitCode === 1 && !error
+    const noMatches = head === "grep" && report.exitCode === 1 && !error
 
     return {
-        title:
-            report.tool === "readFile"
-                ? `Read ${path}`
-                : report.tool === "writeFile"
-                  ? `Wrote ${path}`
-                  : `Ran ${report.command}`,
+        title: `Ran ${report.command}`,
         command: report.command,
-        icon: STEP_ICONS[report.tool] ?? <TerminalIcon />,
+        icon: COMMAND_ICONS[head] ?? <TerminalIcon />,
         output: noMatches
             ? "(no matching lines)"
             : // stderr is kept even on a zero exit code: warnings explain odd output.
