@@ -35,9 +35,10 @@ import {
 } from "@/components/ui/tooltip";
 
 import { VirtualFile } from "@/components/file-explorer/types";
-import { INITIAL_FILES } from "@/components/file-explorer/initial-files";
 import { FileExplorer } from "@/components/file-explorer/file-explorer";
 import { FileViewer } from "@/components/file-explorer/file-viewer";
+import { ImportPdfDialog } from "@/components/file-explorer/import-pdf-dialog";
+import { PdfImportResult } from "@/lib/pdf";
 import { MessagePattern } from "@/components/ai-elements/message-list";
 import { PromptInputDemo } from "@/components/ai-elements/prompt-input";
 
@@ -48,12 +49,10 @@ export interface Message {
 
 export default function Home() {
   // File System State
-  const [files, setFiles] = React.useState<VirtualFile[]>(INITIAL_FILES);
-  const [selectedFileId, setSelectedFileId] = React.useState<string | null>("file-page");
-  const [openFileIds, setOpenFileIds] = React.useState<string[]>([
-    "file-page",
-    "file-rag",
-  ]);
+  const [files, setFiles] = React.useState<VirtualFile[]>([]);
+  const [selectedFileId, setSelectedFileId] = React.useState<string | null>(null);
+  const [openFileIds, setOpenFileIds] = React.useState<string[]>([]);
+  const [isImportPdfOpen, setIsImportPdfOpen] = React.useState(false);
 
   // Chatbot State
   const [messages, setMessages] = React.useState<Message[]>([]);
@@ -123,10 +122,11 @@ export default function Home() {
     );
   };
 
-  const handleResetFiles = () => {
-    setFiles(INITIAL_FILES);
-    setSelectedFileId("file-page");
-    setOpenFileIds(["file-page", "file-rag"]);
+  const handleImportPdf = (result: PdfImportResult) => {
+    setFiles(result.files);
+    const first = result.files[0] ?? null;
+    setSelectedFileId(first?.id ?? null);
+    setOpenFileIds(first ? [first.id] : []);
   };
 
   // Chat Handlers
@@ -202,7 +202,7 @@ export default function Home() {
             onAddFile={handleAddFile}
             onRemoveFile={handleRemoveFile}
             onRenameFile={handleRenameFile}
-            onResetFiles={handleResetFiles}
+            onImportPdf={() => setIsImportPdfOpen(true)}
           />
         </ResizablePanel>
 
@@ -220,14 +220,7 @@ export default function Home() {
             onSelectFile={handleSelectFile}
             onCloseFile={handleCloseFile}
             onUpdateContent={handleUpdateContent}
-            onOpenNewFileDialog={() => {
-              handleAddFile({
-                name: "untitled.ts",
-                path: "src/untitled.ts",
-                content: "// New file\n",
-                language: "typescript",
-              });
-            }}
+            onImportPdf={() => setIsImportPdfOpen(true)}
             onSendToChat={handleAskAboutFile}
           />
         </ResizablePanel>
@@ -407,6 +400,13 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* PDF Import */}
+      <ImportPdfDialog
+        open={isImportPdfOpen}
+        onOpenChange={setIsImportPdfOpen}
+        onImport={handleImportPdf}
+      />
     </div>
   );
 }

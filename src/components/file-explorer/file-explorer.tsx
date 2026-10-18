@@ -10,7 +10,6 @@ import {
   Edit2Icon,
   SearchIcon,
   UploadIcon,
-  RotateCcwIcon,
   MoreVerticalIcon,
   FolderPlusIcon,
   FilePlusIcon,
@@ -26,6 +25,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +73,7 @@ interface FileExplorerProps {
   onAddFile: (file: { name: string; path: string; content: string; language: string }) => void;
   onRemoveFile: (id: string) => void;
   onRenameFile: (id: string, newName: string, newPath: string) => void;
-  onResetFiles?: () => void;
+  onImportPdf: () => void;
 }
 
 function FolderTreeNode({
@@ -239,7 +246,7 @@ export function FileExplorer({
   onAddFile,
   onRemoveFile,
   onRenameFile,
-  onResetFiles,
+  onImportPdf,
 }: FileExplorerProps) {
   const [search, setSearch] = React.useState("");
 
@@ -258,8 +265,6 @@ export function FileExplorer({
 
   // Delete Alert Dialog State
   const [fileToDelete, setFileToDelete] = React.useState<VirtualFile | null>(null);
-
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const selectedFile = files.find((f) => f.id === selectedFileId);
   const selectedPath = selectedFile?.path ?? "";
@@ -320,27 +325,6 @@ export function FileExplorer({
     setRenameValue("");
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFiles = e.target.files;
-    if (!uploadedFiles || uploadedFiles.length === 0) return;
-
-    Array.from(uploadedFiles).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = (event.target?.result as string) || "";
-        onAddFile({
-          name: file.name,
-          path: file.name,
-          content: text,
-          language: detectLanguage(file.name),
-        });
-      };
-      reader.readAsText(file);
-    });
-
-    e.target.value = "";
-  };
-
   const handleNewFileInFolder = (folderPath: string) => {
     setNewFilePath(folderPath);
     setNewFileName("");
@@ -359,15 +343,6 @@ export function FileExplorer({
 
   return (
     <div className="flex h-full w-full flex-col bg-sidebar text-sidebar-foreground border-r border-border select-none overflow-hidden">
-      {/* Hidden File Input for uploading files */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={handleFileUpload}
-      />
-
       {/* Explorer Header */}
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-2.5">
         <div className="flex items-center gap-2">
@@ -422,33 +397,15 @@ export function FileExplorer({
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload Files"
+                  onClick={onImportPdf}
+                  aria-label="Import PDF"
                 >
                   <UploadIcon className="size-3.5" />
                 </Button>
               }
             />
-            <TooltipContent>Upload Files</TooltipContent>
+            <TooltipContent>Import PDF</TooltipContent>
           </Tooltip>
-
-          {onResetFiles && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={onResetFiles}
-                    aria-label="Reset Files"
-                  >
-                    <RotateCcwIcon className="size-3.5" />
-                  </Button>
-                }
-              />
-              <TooltipContent>Reset to Sample Files</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </div>
 
@@ -478,9 +435,9 @@ export function FileExplorer({
       {/* File Tree List */}
       <ScrollArea className="flex-1 px-1.5 py-2">
         {fileTree.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted-foreground">
-            <p>No files found</p>
-            {search && (
+          search ? (
+            <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted-foreground">
+              <p>No files match &quot;{search}&quot;</p>
               <Button
                 variant="link"
                 size="sm"
@@ -489,8 +446,26 @@ export function FileExplorer({
               >
                 Clear filter
               </Button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <Empty className="border border-dashed border-border/70 bg-muted/20 py-8">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <UploadIcon />
+                </EmptyMedia>
+                <EmptyTitle>No files yet</EmptyTitle>
+                <EmptyDescription>
+                  Import a PDF to split it into chapters and chunks.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" onClick={onImportPdf}>
+                  <UploadIcon className="size-3.5" />
+                  Import PDF
+                </Button>
+              </EmptyContent>
+            </Empty>
+          )
         ) : (
           <div className="flex flex-col gap-0.5 text-sm">
             {fileTree.map((node) => (

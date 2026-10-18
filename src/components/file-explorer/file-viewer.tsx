@@ -12,10 +12,10 @@ import {
   EyeIcon,
   PencilIcon,
   XIcon,
-  PlusIcon,
   SparklesIcon,
   BookOpenIcon,
   Code2Icon,
+  UploadIcon,
 } from "lucide-react";
 
 import { cn } from "cn";
@@ -24,6 +24,14 @@ import { highlightCode } from "@/lib/highlighter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   CodeBlock,
   CodeBlockContent,
@@ -41,7 +49,7 @@ interface FileViewerProps {
   onSelectFile: (file: VirtualFile) => void;
   onCloseFile: (fileId: string) => void;
   onUpdateContent: (fileId: string, content: string) => void;
-  onOpenNewFileDialog: () => void;
+  onImportPdf: () => void;
   onSendToChat?: (file: VirtualFile) => void;
 }
 
@@ -70,7 +78,7 @@ export function FileViewer({
   onSelectFile,
   onCloseFile,
   onUpdateContent,
-  onOpenNewFileDialog,
+  onImportPdf,
   onSendToChat,
 }: FileViewerProps) {
   const [isEditing, setIsEditing] = React.useState(false);
@@ -135,26 +143,24 @@ export function FileViewer({
   if (!activeFile) {
     return (
       <div className="flex h-full w-full items-center justify-center p-8 bg-background select-none">
-        <div className="flex flex-col items-center justify-center text-center max-w-sm">
-          <div className="size-10 rounded-xl bg-muted/40 flex items-center justify-center mb-3 text-muted-foreground/60">
-            <FileCodeIcon className="size-5" />
-          </div>
-          <p className="text-sm font-medium text-foreground">No file selected</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Choose a file from the explorer on the left to preview or edit.
-          </p>
-          {onOpenNewFileDialog && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenNewFileDialog}
-              className="mt-4 gap-1.5 text-xs h-7"
-            >
-              <PlusIcon className="size-3.5" />
-              New File
+        <Empty className="max-w-md border border-dashed border-border/70 bg-muted/20 py-10">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <FileTextIcon />
+            </EmptyMedia>
+            <EmptyTitle>No document loaded</EmptyTitle>
+            <EmptyDescription>
+              Import a PDF and it will be split into chapters and chunks, one
+              folder per chapter.
+            </EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button size="sm" onClick={onImportPdf}>
+              <UploadIcon className="size-3.5" />
+              Import PDF
             </Button>
-          )}
-        </div>
+          </EmptyContent>
+        </Empty>
       </div>
     );
   }
