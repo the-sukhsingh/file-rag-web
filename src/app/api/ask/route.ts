@@ -31,6 +31,13 @@ const NO_ANSWER_AFTER_SEARCH =
   "I searched the workspace but did not manage to write an answer. The steps above show the commands I ran and what they returned.";
 const NO_ANSWER = "I could not produce an answer for that request.";
 
+/** What the model is told when its turn ends before it has written anything. */
+const ANSWER_NUDGE = [
+  "Stop searching and answer the question now, in prose, using only the command",
+  "output above. Quote the paths of the files you read. Do not run any more",
+  "commands, and do not describe what you would look up next.",
+].join(" ");
+
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
@@ -131,6 +138,69 @@ function attemptedToolName(error: unknown): string | undefined {
 }
 
 /**
+ * Streams a closing answer for a turn that ended without one.
+ *
+ * The agent often spends its whole command budget searching, or its last step
+ * comes back empty; either way the research is in the step transcript, not in
+ * the conversation, so it is replayed with the tool declared but not callable
+ * (`toolChoice: "none"`) and the model is told to answer from it. That turns
+ * "ran six commands and said nothing" into prose the user can read, grounded in
+ * output the model actually saw.
+ */
+async function* streamClosingAnswer({
+  system,
+  messages,
+  transcript,
+  tools,
+  fallback,
+  signal,
+}: {
+  system: string;
+  messages: ModelMessage[];
+  transcript: ModelMessage[];
+  tools: ToolSet;
+  fallback: string;
+  signal?: AbortSignal;
+}): AsyncGenerator<AskStreamEvent> {
+  try {
+    const result = streamText({
+      model,
+      system,
+      messages: [...messages, ...transcript, { role: "user", content: ANSWER_NUDGE }],
+      tools,
+      // The tool stays declared so the tool calls in the transcript remain
+      // valid, but the model cannot reach for it while answering.
+      toolChoice: "none",
+      abortSignal: signal,
+    });
+
+    let wrote = false;
+
+    for await (const part of result.fullStream) {
+      if (part.type === "text-delta") {
+        if (part.text) {
+          wrote = true;
+          yield { type: "text", delta: part.text };
+        }
+      } else if (part.type === "error") {
+        throw part.error instanceof Error
+          ? part.error
+          : new Error(String(part.error));
+      }
+    }
+
+    if (wrote) return;
+  } catch (error) {
+    // A cancelled request (the reader closed the page) needs no report.
+    if (signal?.aborted) return;
+
+    console.error("Error writing the closing answer:", error);
+  }
+
+  yield { type: "text", delta: fallback };
+}
+
+/**
  * Streams one agent turn, as events the client can render while they arrive:
  * answer text as it is written, and each command as it starts and finishes.
  *
@@ -158,11 +228,16 @@ async function* streamTurn({
   });
 
   let ranCommand = false;
+  let reasoningChars = 0;
 
   for await (const part of result.fullStream) {
     switch (part.type) {
       case "text-delta":
         if (part.text) yield { type: "text", delta: part.text };
+        break;
+
+      case "reasoning-delta":
+        reasoningChars += part.text?.length ?? 0;
         break;
 
       case "tool-call":
@@ -191,15 +266,25 @@ async function* streamTurn({
 
   // A turn that ran commands but wrote nothing used to end the request with a
   // 500: `result.output` throws NoOutputGeneratedError unless an output schema
-  // was requested, and `result.text` was empty. Reading only `text` and saying
-  // something when it is empty turns that into an answer.
+  // was requested, and `result.text` was empty. `text` is the last step's text,
+  // so an empty one means the model stopped mid-search - out of steps, or an
+  // empty completion - rather than that it answered earlier in the turn.
   const text = (await result.text)?.trim() ?? "";
-  if (!text) {
-    yield {
-      type: "text",
-      delta: ranCommand ? NO_ANSWER_AFTER_SEARCH : NO_ANSWER,
-    };
-  }
+  if (text) return;
+
+  const steps = await result.steps;
+  console.warn(
+    `[ask] no answer after ${steps.length} step(s), ${reasoningChars} reasoning char(s), last step ran ${ranCommand ? "commands" : "nothing"}; asking for a closing answer.`
+  );
+
+  yield* streamClosingAnswer({
+    system,
+    messages,
+    transcript: steps.flatMap((step) => step.response.messages),
+    tools,
+    fallback: ranCommand ? NO_ANSWER_AFTER_SEARCH : NO_ANSWER,
+    signal,
+  });
 }
 
 export async function POST(request: Request) {

@@ -39,8 +39,13 @@ export const AGENT_INSTRUCTIONS = [
   "Send the whole command in one call: `ls -R` for the structure, then",
   "`grep -rn \"keyword\" .` to locate text, then `cat` the matching file to read",
   "it. Batch whatever you need into a single pipeline or script rather than",
-  "spending a round trip per command. Never invent file paths or contents, and",
-  "quote the paths you actually read so the user can open them.",
+  "spending a round trip per command.",
+  `You get at most ${MAX_AGENT_STEPS} command rounds per question, and you must`,
+  "finish with the written answer: the round after your last command is prose",
+  "that answers the question, never another command. If you are near that limit,",
+  "answer from what you have already read.",
+  "Never invent file paths or contents, and quote the paths you actually read so",
+  "the user can open them.",
 ].join(" ");
 
 export interface WorkspaceToolkit {
