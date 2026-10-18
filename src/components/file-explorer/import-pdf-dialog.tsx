@@ -9,7 +9,7 @@ import {
   UploadIcon,
 } from "lucide-react";
 
-import { cn } from "cn";
+import { cn, pluralize } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -123,16 +123,19 @@ export function ImportPdfDialog({
 
   const isWorking = status === "working";
 
+  // Every close path funnels through here so a finished import cannot leak
+  // into the next time the dialog is opened.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
+      if (isWorking) return;
+      reset();
+    }
+    onOpenChange(next);
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (isWorking) return;
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import PDF</DialogTitle>
           <DialogDescription>
@@ -221,14 +224,13 @@ export function ImportPdfDialog({
                 {result.fileName}
               </span>
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
-                {result.pageCount} pages
+                {pluralize(result.pageCount, "page")}
               </Badge>
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
-                {result.chapters.length}{" "}
-                {result.chapters.length === 1 ? "folder" : "folders"}
+                {pluralize(result.chapters.length, "folder")}
               </Badge>
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
-                {result.files.length} chunks
+                {pluralize(result.files.length, "chunk")}
               </Badge>
             </div>
 
@@ -254,7 +256,7 @@ export function ImportPdfDialog({
                     <span className="truncate">{chapter.title}</span>
                     <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
                       p. {chapter.startPage}-{chapter.endPage} ·{" "}
-                      {chapter.chunkCount} chunks
+                      {pluralize(chapter.chunkCount, "chunk")}
                     </span>
                   </div>
                 ))}
@@ -274,13 +276,13 @@ export function ImportPdfDialog({
 
         <DialogFooter>
           {status === "done" ? (
-            <Button onClick={() => onOpenChange(false)}>View workspace</Button>
+            <Button onClick={() => handleOpenChange(false)}>View workspace</Button>
           ) : (
             <>
               <Button
                 variant="outline"
                 disabled={isWorking}
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleOpenChange(false)}
               >
                 Cancel
               </Button>
