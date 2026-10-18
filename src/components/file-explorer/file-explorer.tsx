@@ -65,6 +65,11 @@ import {
 } from "@/components/ui/tooltip";
 
 import { VirtualFile, FileNode, buildFileTree, detectLanguage } from "./types";
+import {
+  DocumentSearchResults,
+  MIN_QUERY_LENGTH,
+  searchDocuments,
+} from "./document-search";
 
 interface FileExplorerProps {
   files: VirtualFile[];
@@ -250,6 +255,16 @@ export function FileExplorer({
 }: FileExplorerProps) {
   const [search, setSearch] = React.useState("");
 
+  // Scanning every chunk's text is heavier than filtering names, so the
+  // contents search runs against a deferred query and the input stays responsive.
+  const deferredSearch = React.useDeferredValue(search);
+  const hasContentQuery = deferredSearch.trim().length >= MIN_QUERY_LENGTH;
+
+  const documentSearch = React.useMemo(
+    () => searchDocuments(files, deferredSearch),
+    [files, deferredSearch]
+  );
+
   // Dialog States
   const [isNewFileDialogOpen, setIsNewFileDialogOpen] = React.useState(false);
   const [newFileName, setNewFileName] = React.useState("");
@@ -416,7 +431,7 @@ export function FileExplorer({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search files..."
+            placeholder="Search files and text..."
             className="h-7 pl-8 text-xs bg-muted/40"
           />
           {search && (
@@ -434,10 +449,27 @@ export function FileExplorer({
 
       {/* File Tree List */}
       <ScrollArea className="min-h-0 flex-1 px-1.5 py-2">
+        {/* Contents of every imported document, not just the file names. */}
+        {hasContentQuery &&
+          (documentSearch.matches.length > 0 ? (
+            <DocumentSearchResults
+              query={deferredSearch}
+              result={documentSearch}
+              onSelectFile={onSelectFile}
+              className="mb-3 border-b border-border/40 pb-3"
+            />
+          ) : (
+            fileTree.length > 0 && (
+              <p className="mb-3 border-b border-border/40 px-1 pb-3 text-[11px] text-muted-foreground">
+                No matching text in your {files.length === 1 ? "document" : "documents"}.
+              </p>
+            )
+          ))}
+
         {fileTree.length === 0 ? (
           search ? (
             <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-muted-foreground">
-              <p>No files match &quot;{search}&quot;</p>
+              <p>No file names match &quot;{search}&quot;</p>
               <Button
                 variant="link"
                 size="sm"
