@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
-  generateText,
   isStepCount,
+  streamText,
   type ModelMessage,
   type ToolSet,
 } from "ai";
@@ -12,18 +12,24 @@ import {
   buildToolNameRule,
   buildWorkspaceSystemPrompt,
   createWorkspaceToolkit,
+  type WorkspaceToolkit,
 } from "@/lib/bash-tool";
 import {
   WorkspaceLimitError,
   normalizeSessionId,
   type VfsFileInput,
 } from "@/lib/server/vfs";
-import type { CommandReport } from "@/lib/chat";
+import type { AskStreamEvent } from "@/lib/chat";
 
 export const runtime = "nodejs";
 
 /** Keep each reported command small; the tool already caps its own output. */
 const MAX_REPORT_CHARS = 4_000;
+
+/** Said instead of silence when the agent searches but never writes an answer. */
+const NO_ANSWER_AFTER_SEARCH =
+  "I searched the workspace but did not manage to write an answer. The steps above show the commands I ran and what they returned.";
+const NO_ANSWER = "I could not produce an answer for that request.";
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
@@ -31,16 +37,7 @@ const groq = createGroq({
 
 const model = groq("openai/gpt-oss-120b");
 
-interface ToolCallLike {
-  toolCallId: string;
-  toolName: string;
-  input: unknown;
-}
-
-interface ToolResultLike {
-  toolCallId: string;
-  output: unknown;
-}
+const encoder = new TextEncoder();
 
 function readFiles(value: unknown): VfsFileInput[] {
   if (!Array.isArray(value)) return [];
@@ -64,19 +61,18 @@ function trim(value: string): { text: string; truncated: boolean } {
 function describeCall(toolName: string, input: unknown): string {
   const args = (input ?? {}) as { command?: unknown; path?: unknown };
 
-  if (toolName === "bash" && typeof args.command === "string") {
-    return args.command;
-  }
-  if (typeof args.path === "string") {
-    return `${toolName === "readFile" ? "cat" : toolName} ${args.path}`;
-  }
+  if (typeof args.command === "string") return args.command;
+  if (typeof args.path === "string") return `${toolName} ${args.path}`;
   return toolName;
 }
 
-function toCommandReport(
-  call: ToolCallLike,
-  output: unknown
-): CommandReport {
+/** Normalizes whatever a tool returned into the fields the trace renders. */
+function toResultFields(output: unknown): {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  truncated?: boolean;
+} {
   const result = (output ?? {}) as {
     stdout?: unknown;
     stderr?: unknown;
@@ -84,9 +80,6 @@ function toCommandReport(
     content?: unknown;
     success?: unknown;
   };
-
-  // For the bash tool this is exactly the command the model sent.
-  const command = describeCall(call.toolName, call.input);
 
   if (
     typeof result.stdout === "string" ||
@@ -96,34 +89,26 @@ function toCommandReport(
     const stdout = trim(typeof result.stdout === "string" ? result.stdout : "");
     const stderr = trim(typeof result.stderr === "string" ? result.stderr : "");
     return {
-      tool: call.toolName,
-      command,
       stdout: stdout.text,
       stderr: stderr.text,
-      exitCode:
-        typeof result.exitCode === "number" ? result.exitCode : 0,
+      exitCode: typeof result.exitCode === "number" ? result.exitCode : 0,
       truncated: stdout.truncated || stderr.truncated,
     };
   }
 
   if (typeof result.content === "string") {
     const stdout = trim(result.content);
-    return {
-      tool: call.toolName,
-      command,
-      stdout: stdout.text,
-      stderr: "",
-      exitCode: 0,
-      truncated: stdout.truncated,
-    };
+    return { stdout: stdout.text, stderr: "", exitCode: 0, truncated: stdout.truncated };
   }
 
+  const stdout = trim(
+    typeof output === "string" ? output : JSON.stringify(output ?? null)
+  );
   return {
-    tool: call.toolName,
-    command,
-    stdout: typeof output === "string" ? output : JSON.stringify(output ?? null),
+    stdout: stdout.text,
     stderr: "",
     exitCode: result.success === false ? 1 : 0,
+    truncated: stdout.truncated,
   };
 }
 
@@ -146,131 +131,218 @@ function attemptedToolName(error: unknown): string | undefined {
 }
 
 /**
- * Runs the agent turn. Providers reject the whole request - non-retryably -
- * when the model invents a tool name, so instead of failing the turn we tell
- * the model which names exist and give it one more attempt.
+ * Streams one agent turn, as events the client can render while they arrive:
+ * answer text as it is written, and each command as it starts and finishes.
+ *
+ * Throws on a model or provider failure, which the caller turns into an `error`
+ * event (or a retry).
  */
-async function askAgent({
+async function* streamTurn({
   system,
   messages,
   tools,
-  toolNames,
+  signal,
 }: {
   system: string;
   messages: ModelMessage[];
   tools: ToolSet;
-  toolNames: string[];
-}) {
-  const request = {
+  signal?: AbortSignal;
+}): AsyncGenerator<AskStreamEvent> {
+  const result = streamText({
     model,
     system,
     messages,
     tools,
     stopWhen: isStepCount(MAX_AGENT_STEPS),
-  };
+    abortSignal: signal,
+  });
 
-  try {
-    return await generateText(request);
-  } catch (error) {
-    const attempted = attemptedToolName(error);
-    if (!attempted) throw error;
+  let ranCommand = false;
 
-    console.warn(
-      `Model called unadvertised tool "${attempted}"; retrying with the tool list.`
-    );
+  for await (const part of result.fullStream) {
+    switch (part.type) {
+      case "text-delta":
+        if (part.text) yield { type: "text", delta: part.text };
+        break;
 
-    return await generateText({
-      ...request,
-      messages: [
-        ...messages,
-        {
-          role: "user",
-          content: [
-            `You called a tool named "${attempted}", which does not exist.`,
-            buildToolNameRule(toolNames),
-            "Retry the request using one of those exact names.",
-          ].join(" "),
-        },
-      ],
-    });
+      case "tool-call":
+        ranCommand = true;
+        yield {
+          type: "command",
+          id: part.toolCallId,
+          tool: part.toolName,
+          command: describeCall(part.toolName, part.input),
+        };
+        break;
+
+      case "tool-result":
+        yield { type: "result", id: part.toolCallId, ...toResultFields(part.output) };
+        break;
+
+      case "error":
+        throw part.error instanceof Error
+          ? part.error
+          : new Error(String(part.error));
+
+      default:
+        break;
+    }
+  }
+
+  // A turn that ran commands but wrote nothing used to end the request with a
+  // 500: `result.output` throws NoOutputGeneratedError unless an output schema
+  // was requested, and `result.text` was empty. Reading only `text` and saying
+  // something when it is empty turns that into an answer.
+  const text = (await result.text)?.trim() ?? "";
+  if (!text) {
+    yield {
+      type: "text",
+      delta: ranCommand ? NO_ANSWER_AFTER_SEARCH : NO_ANSWER,
+    };
   }
 }
 
 export async function POST(request: Request) {
+  const body = (await request.json().catch(() => null)) as {
+    messages?: unknown;
+    files?: unknown;
+    sessionId?: unknown;
+  } | null;
+
+  const messages: ModelMessage[] = Array.isArray(body?.messages)
+    ? (body.messages as ModelMessage[])
+    : [];
+
+  if (!messages.length) {
+    return NextResponse.json(
+      { error: "Message content is required" },
+      { status: 400 }
+    );
+  }
+
+  let toolkit: WorkspaceToolkit;
+  const sessionId = normalizeSessionId(body?.sessionId);
+
   try {
-    const body = (await request.json()) as {
-      messages?: unknown;
-      files?: unknown;
-      sessionId?: unknown;
-    };
-
-    const messages: ModelMessage[] = Array.isArray(body.messages)
-      ? (body.messages as ModelMessage[])
-      : [];
-
-    if (!messages.length) {
-      return NextResponse.json(
-        { error: "Message content is required" },
-        { status: 400 }
-      );
-    }
-
     // The client ships its whole workspace; the server mirrors it into the
     // session's virtual file system before the model gets the bash tool.
-    const sessionId = normalizeSessionId(body.sessionId);
-    const files = readFiles(body.files);
-
-    const toolkit = await createWorkspaceToolkit({ sessionId, files });
-
-    const system =
-      toolkit.workspace.fileCount > 0
-        ? buildWorkspaceSystemPrompt(toolkit)
-        : [
-            "You are a document retrieval assistant with access to a virtual file system.",
-            "The file system is empty: no documents have been imported yet.",
-            "Tell the user to import a PDF so there is something to search.",
-            buildToolNameRule(toolkit.toolNames),
-          ].join(" ");
-
-    const response = await askAgent({
-      system,
-      messages,
-      tools: toolkit.tools,
-      toolNames: toolkit.toolNames,
-    });
-
-    const commands = (response.toolCalls as ToolCallLike[]).map((call) => {
-      const result = (response.toolResults as ToolResultLike[]).find(
-        (candidate) => candidate.toolCallId === call.toolCallId
-      );
-      return toCommandReport(call, result?.output);
-    });
-
-    const message =
-      response.text?.trim() ||
-      (typeof response.output === "string" ? response.output.trim() : "");
-
-    return NextResponse.json({
-      message: message || "The workspace was searched, but no answer was produced.",
-      commands,
+    toolkit = await createWorkspaceToolkit({
       sessionId,
-      workspace: {
-        ...toolkit.workspace,
-        stepCount: response.steps.length,
-      },
+      files: readFiles(body?.files),
     });
   } catch (error) {
-    console.error("Error in chat API:", error);
-
-    const status = error instanceof WorkspaceLimitError ? 413 : 500;
+    console.error("Error preparing the workspace:", error);
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "An error occurred while processing your request",
+            : "An error occurred while preparing the workspace",
       },
-      { status }
+      { status: error instanceof WorkspaceLimitError ? 413 : 500 }
     );
   }
+
+  const system =
+    toolkit.workspace.fileCount > 0
+      ? buildWorkspaceSystemPrompt(toolkit)
+      : [
+          "You are a document retrieval assistant with access to a virtual file system.",
+          "The file system is empty: no documents have been imported yet.",
+          "Tell the user to import a PDF so there is something to search.",
+          buildToolNameRule(toolkit.toolNames),
+        ].join(" ");
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let open = true;
+
+      const send = (event: AskStreamEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          // The client went away mid-stream.
+          open = false;
+        }
+      };
+
+      try {
+        send({ type: "start", sessionId });
+
+        let emitted = false;
+        let failure: unknown;
+        let attemptMessages = messages;
+
+        // Providers reject the whole request - non-retryably - when the model
+        // invents a tool name. Retry once with a correction, as long as nothing
+        // has been streamed yet, so a mistake costs a round trip and not a turn.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          failure = undefined;
+
+          try {
+            for await (const event of streamTurn({
+              system,
+              messages: attemptMessages,
+              tools: toolkit.tools,
+              signal: request.signal,
+            })) {
+              emitted = true;
+              send(event);
+            }
+          } catch (error) {
+            failure = error;
+          }
+
+          if (!failure) break;
+
+          const attempted = attemptedToolName(failure);
+          if (emitted || !attempted) break;
+
+          console.warn(
+            `Model called unadvertised tool "${attempted}"; retrying with the tool list.`
+          );
+
+          attemptMessages = [
+            ...messages,
+            {
+              role: "user",
+              content: [
+                `You called a tool named "${attempted}", which does not exist.`,
+                buildToolNameRule(toolkit.toolNames),
+                "Retry the request using that tool.",
+              ].join(" "),
+            },
+          ];
+        }
+
+        if (failure) {
+          send({
+            type: "error",
+            message:
+              failure instanceof Error
+                ? failure.message
+                : "The request failed while streaming the answer",
+          });
+        } else {
+          send({ type: "done" });
+        }
+      } finally {
+        open = false;
+        try {
+          controller.close();
+        } catch {
+          // Already closed by the client cancelling the response.
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

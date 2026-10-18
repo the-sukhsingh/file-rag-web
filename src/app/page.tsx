@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  BotIcon,
   SparklesIcon,
   Trash2Icon,
   FileCodeIcon,
@@ -16,7 +15,6 @@ import {
 } from "@/components/ui/resizable";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import {
   AlertDialog,
@@ -43,15 +41,77 @@ import { MessagePattern } from "@/components/ai-elements/message-list";
 import { PromptInputDemo } from "@/components/ai-elements/prompt-input";
 import {
   loadOrCreateSessionId,
-  type AskResponse,
+  type AskStreamEvent,
   type CommandReport,
 } from "@/lib/chat";
 
 export interface Message {
+  /** Stable across streaming updates, so a message can be patched in place. */
+  id: string;
   role: "assistant" | "user";
   content: string;
   /** Bash commands the server ran against its workspace for this reply. */
   commands?: CommandReport[];
+}
+
+/** How often streamed deltas are folded into React state. */
+const STREAM_FLUSH_MS = 60;
+
+function newMessageId() {
+  return `msg-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+}
+
+/**
+ * Folds the events that arrived since the last flush into the message being
+ * streamed: text appends, commands are added as running and completed in place,
+ * and a failure is appended to the answer so it is never silently swallowed.
+ */
+function applyEvents(message: Message, events: AskStreamEvent[]): Message {
+  let content = message.content;
+  let commands = message.commands ?? [];
+
+  for (const event of events) {
+    switch (event.type) {
+      case "text":
+        content += event.delta;
+        break;
+      case "command":
+        commands = [
+          ...commands,
+          {
+            id: event.id,
+            tool: event.tool,
+            command: event.command,
+            stdout: "",
+            stderr: "",
+            exitCode: 0,
+            state: "running",
+          },
+        ];
+        break;
+      case "result":
+        commands = commands.map((command) =>
+          command.id === event.id
+            ? {
+                ...command,
+                stdout: event.stdout,
+                stderr: event.stderr,
+                exitCode: event.exitCode,
+                truncated: event.truncated,
+                state: "done",
+              }
+            : command
+        );
+        break;
+      case "error":
+        content += `${content ? "\n\n" : ""}${event.message}`;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return { ...message, content, commands };
 }
 
 export default function Home() {
@@ -76,6 +136,13 @@ export default function Home() {
   const openFiles = React.useMemo(() => {
     return files.filter((f) => openFileIds.includes(f.id));
   }, [files, openFileIds]);
+
+  // Once the reply has any content or a running command, its own UI says more
+  // than a "thinking" chip does.
+  const lastMessage = messages[messages.length - 1];
+  const agentHasStarted =
+    lastMessage?.role === "assistant" &&
+    (lastMessage.content.length > 0 || (lastMessage.commands?.length ?? 0) > 0);
 
   // File Handlers
   const handleSelectFile = (file: VirtualFile) => {
@@ -145,12 +212,41 @@ export default function Home() {
       promptWithContext = `[Context File: ${activeFile.path}]\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nQuestion: ${text}`;
     }
 
-    const newMessages: Message[] = [
-      ...messages,
-      { role: "user", content: text },
-    ];
-    setMessages(newMessages);
+    const assistantId = newMessageId();
+    const history = messages;
+
+    setMessages([
+      ...history,
+      { id: newMessageId(), role: "user", content: text },
+      { id: assistantId, role: "assistant", content: "" },
+    ]);
     setIsLoading(true);
+
+    // Deltas arrive far faster than the UI needs to repaint, so they are queued
+    // and folded into a single state update every `STREAM_FLUSH_MS`.
+    let queued: AskStreamEvent[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!queued.length) return;
+
+      const events = queued;
+      queued = [];
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId ? applyEvents(message, events) : message
+        )
+      );
+    };
+
+    const enqueue = (event: AskStreamEvent) => {
+      queued.push(event);
+      if (!flushTimer) flushTimer = setTimeout(flush, STREAM_FLUSH_MS);
+    };
 
     try {
       const response = await fetch("/api/ask", {
@@ -162,28 +258,80 @@ export default function Home() {
           // virtual file system before running bash commands over it.
           files: files.map(({ path, content }) => ({ path, content })),
           messages: [
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
+            ...history.map((m) => ({ role: m.role, content: m.content })),
             { role: "user", content: promptWithContext },
           ],
         }),
       });
 
-      const data = (await response.json()) as AskResponse;
-      const reply = data.message || data.error || "No response received";
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: reply, commands: data.commands },
-      ]);
+      // Failures thrown before the stream starts come back as JSON with a status.
+      if (!response.ok || !response.body) {
+        const failure = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          failure?.error || `The request failed (${response.status})`
+        );
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Frames are newline-delimited JSON; a chunk can split one in half.
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const frame = line.trim();
+          if (!frame) continue;
+          try {
+            enqueue(JSON.parse(frame) as AskStreamEvent);
+          } catch {
+            // A malformed frame is not worth failing the whole answer over.
+          }
+        }
+      }
+
+      // Flush whatever the decoder still holds (a split multi-byte character)
+      // and pick up a final frame that arrived without its newline.
+      buffer += decoder.decode();
+
+      const trailing = buffer.trim();
+      if (trailing) {
+        try {
+          enqueue(JSON.parse(trailing) as AskStreamEvent);
+        } catch {
+          // Same: ignore the unparsable tail.
+        }
+      }
     } catch (error) {
       console.error("Chat Error:", error);
-      setMessages([
-        ...newMessages,
-        {
-          role: "assistant",
-          content: "Sorry, an error occurred while connecting to the AI assistant.",
-        },
-      ]);
+      const failure =
+        error instanceof Error
+          ? error.message
+          : "Sorry, the connection to the AI assistant failed.";
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: message.content
+                  ? `${message.content}\n\n_${failure}_`
+                  : failure,
+              }
+            : message
+        )
+      );
     } finally {
+      flush();
       setIsLoading(false);
       setExternalPrompt("");
     }
@@ -370,7 +518,7 @@ export default function Home() {
               )}
 
               {/* Loading Indicator */}
-              {isLoading && (
+              {isLoading && !agentHasStarted && (
                 <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border/40 animate-pulse">
                   <Spinner className="size-3.5 text-primary" />
                   <span>AI assistant is thinking...</span>

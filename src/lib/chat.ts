@@ -2,38 +2,42 @@
  * Shared chat contracts between the client and `/api/ask`.
  *
  * The server answers with prose plus a report of every bash command it ran
- * against the workspace, which the chat renders under the reply.
+ * against the workspace, streamed as newline-delimited JSON events so the reply
+ * and its reasoning trail appear while the agent is still working.
  */
 
 /** One tool invocation the agent made while answering. */
 export interface CommandReport {
-  /** Tool that ran: `bash`, `readFile` or `writeFile`. */
+  /** Matches the `command` event with the `result` that completes it. */
+  id?: string;
+  /** Tool that ran. The agent has a single `bash` tool today. */
   tool: string;
-  /** The command line, or the equivalent for the file tools. */
+  /** The complete command line the agent sent. */
   command: string;
   stdout: string;
   stderr: string;
   exitCode: number;
   /** True when the server clipped the output before sending it. */
   truncated?: boolean;
+  /** `running` from the moment the call streams in until its output lands. */
+  state?: "running" | "done";
 }
 
-/** Server-side workspace stats attached to a reply. */
-export interface WorkspaceStats {
-  workingDirectory: string;
-  fileCount: number;
-  folderCount: number;
-  filePaths: string[];
-  stepCount: number;
-}
-
-export interface AskResponse {
-  message: string;
-  commands?: CommandReport[];
-  sessionId?: string;
-  workspace?: WorkspaceStats;
-  error?: string;
-}
+/** Newline-delimited JSON frames of a `/api/ask` response. */
+export type AskStreamEvent =
+  | { type: "start"; sessionId: string }
+  | { type: "text"; delta: string }
+  | { type: "command"; id: string; tool: string; command: string }
+  | {
+      type: "result";
+      id: string;
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+      truncated?: boolean;
+    }
+  | { type: "done" }
+  | { type: "error"; message: string };
 
 const SESSION_STORAGE_KEY = "file-rag-workspace-session";
 
