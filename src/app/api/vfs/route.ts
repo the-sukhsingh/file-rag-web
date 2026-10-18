@@ -5,6 +5,7 @@ import {
   ensureWorkspaceSummary,
   listWorkspaceFiles,
   normalizeSessionId,
+  readWorkspaceFile,
   resetWorkspace,
   writeWorkspaceFiles,
   type VfsFileInput,
@@ -15,9 +16,10 @@ export const runtime = "nodejs";
 /**
  * Workspace API for the server-side virtual file system.
  *
- * GET    /api/vfs?session=<id>  -> listing and stats
- * POST   /api/vfs               -> upload/update files, returns the listing
- * DELETE /api/vfs?session=<id>  -> drop the workspace
+ * GET    /api/vfs?session=<id>         -> listing and stats
+ * GET    /api/vfs?session=<id>&path=x  -> contents of a single file
+ * POST   /api/vfs                      -> upload/update files, returns the listing
+ * DELETE /api/vfs?session=<id>         -> drop the workspace
  */
 
 function sessionFrom(request: Request): string {
@@ -43,7 +45,25 @@ function fail(error: unknown, fallback: string) {
 }
 
 export async function GET(request: Request) {
-  const sessionId = sessionFrom(request);
+  const url = new URL(request.url);
+  const sessionId = normalizeSessionId(url.searchParams.get("session"));
+  const path = url.searchParams.get("path");
+
+  // Single-file read, mirroring `cat <path>`.
+  if (path) {
+    try {
+      const content = await readWorkspaceFile(sessionId, path);
+      return NextResponse.json({ sessionId, path, size: content.length, content });
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error ? error.message : "Could not read that file.",
+        },
+        { status: 404 }
+      );
+    }
+  }
 
   try {
     const files = await listWorkspaceFiles(sessionId);
