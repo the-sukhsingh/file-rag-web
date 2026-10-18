@@ -4,6 +4,39 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/**
+ * The trace component marks a running step with `shimmer` (and cancels it with
+ * `shimmer-none` under `prefers-reduced-motion`); these are the utilities it
+ * expects from the registry.
+ */
+@utility shimmer {
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0%,
+    color-mix(in oklch, currentColor 40%, transparent) 50%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@utility shimmer-none {
+  color: currentColor;
+  background-image: none;
+  animation: none;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

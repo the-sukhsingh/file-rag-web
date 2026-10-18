@@ -7,6 +7,7 @@ import {
     FileTextIcon,
     FolderTreeIcon,
     HashIcon,
+    LoaderCircleIcon,
     SearchIcon,
     TerminalIcon,
 } from "lucide-react"
@@ -33,6 +34,8 @@ interface Step {
     /** Icon for the step. */
     icon: React.ReactNode
     output: string
+    /** True until the command reports its output. */
+    running: boolean
     failed: boolean
 }
 
@@ -63,31 +66,41 @@ function toStep(report: CommandReport): Step {
     const head = commandHead(report.command)
     const stdout = report.stdout.trim()
     const error = report.stderr.trim()
+    const running = report.state === "running"
 
     // `grep` exits 1 when nothing matched. That is an answer, not a failure.
     const noMatches = head === "grep" && report.exitCode === 1 && !error
 
     return {
-        title: `Ran ${report.command}`,
+        title: `${running ? "Running" : "Ran"} ${report.command}`,
         command: report.command,
         icon: COMMAND_ICONS[head] ?? <TerminalIcon />,
-        output: noMatches
-            ? "(no matching lines)"
-            : // stderr is kept even on a zero exit code: warnings explain odd output.
-              [stdout, error].filter(Boolean).join("\n") || "(no output)",
+        output: running
+            ? "Running…"
+            : noMatches
+              ? "(no matching lines)"
+              : // stderr is kept even on a zero exit code: warnings explain odd output.
+                [stdout, error].filter(Boolean).join("\n") || "(no output)",
+        running,
         failed: report.exitCode !== 0 && !noMatches,
     }
 }
 
-function StatusIcon({ failed }: { failed: boolean }) {
-    return failed ? <CircleAlertIcon /> : <CircleCheckIcon />
+function StatusIcon({ status }: { status?: "running" | "error" }) {
+    if (status === "running") {
+        return <LoaderCircleIcon className="animate-spin" />
+    }
+
+    return status === "error" ? <CircleAlertIcon /> : <CircleCheckIcon />
 }
 
 function StepRow({ step }: { step: Step }) {
+    const status = step.running ? "running" : step.failed ? "error" : undefined
+
     return (
         <TraceCollapsible defaultOpen>
             <TraceCollapsibleTrigger>
-                <TraceLine status={step.failed ? "error" : undefined}>
+                <TraceLine status={status}>
                     <TraceIcon>{step.icon}</TraceIcon>
                     <TraceTitle title={step.command} className="font-mono">
                         {step.title}
@@ -106,10 +119,10 @@ function StepRow({ step }: { step: Step }) {
 }
 
 /**
- * The agent's whole reasoning trail for one reply: every bash, readFile and
- * writeFile call it made against the server workspace, with the output each
- * one returned. Open by default so the trail is visible, and collapsible when
- * the outputs get long.
+ * The agent's whole reasoning trail for one reply: every command it ran against
+ * the server workspace, with the output each one returned. A step shows a
+ * spinner from the moment its call streams in until its output lands, and the
+ * whole trail is open by default and collapsible when the outputs get long.
  */
 export function ChainOfThought({
     commands,
@@ -119,20 +132,24 @@ export function ChainOfThought({
     className?: string
 }) {
     const steps = React.useMemo(() => commands.map(toStep), [commands])
+    const running = steps.some((step) => step.running)
     const failed = steps.filter((step) => step.failed).length
+    const status = running ? "running" : failed > 0 ? "error" : undefined
 
     return (
         <Trace className={cn("text-xs", className)}>
             <TraceCollapsible defaultOpen>
                 <TraceCollapsibleTrigger>
-                    <TraceLine status={failed > 0 ? "error" : undefined}>
+                    <TraceLine status={status}>
                         <TraceIcon>
-                            <StatusIcon failed={failed > 0} />
+                            <StatusIcon status={status} />
                         </TraceIcon>
                         <TraceTitle>
-                            {failed > 0
-                                ? `Ran ${steps.length} steps, ${failed} failed`
-                                : `Ran ${steps.length} step${steps.length === 1 ? "" : "s"}`}
+                            {running
+                                ? "Working through the workspace"
+                                : failed > 0
+                                  ? `Ran ${steps.length} steps, ${failed} failed`
+                                  : `Ran ${steps.length} step${steps.length === 1 ? "" : "s"}`}
                         </TraceTitle>
                     </TraceLine>
                 </TraceCollapsibleTrigger>
