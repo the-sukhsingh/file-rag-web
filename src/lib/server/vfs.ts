@@ -1,4 +1,5 @@
 import { createBashTool, type Sandbox } from "bash-tool";
+import { Bash, type DefenseInDepthConfig } from "just-bash";
 
 /**
  * Server-side virtual file system.
@@ -74,8 +75,64 @@ const MAX_OUTPUT_LENGTH = 12_000;
 const MAX_PATH_LENGTH = 240;
 const MAX_COMMAND_LENGTH = 2_000;
 
-const workspaces = new Map<string, WorkspaceState>();
-const creations = new Map<string, Promise<WorkspaceState>>();
+/**
+ * just-bash's defense-in-depth box is enabled by default, but it patches
+ * process globals and, while a script is running, blocks those globals for any
+ * async work that inherited the sandbox context - including host runtime work
+ * such as Next's request handling and React's scheduler. That is why a plain
+ * `/api/ask` request dies with:
+ *
+ *   SecurityViolationError: globalThis.performance.now is blocked during
+ *   script execution
+ *
+ * The excluded types below are the host-runtime hooks (timers, timing, stack
+ * traces, weak refs, proxies, module loading, env reads, late promise
+ * callbacks) that the shell, Next and React all rely on. The actual escape
+ * vectors stay enforced: `Function`, `eval` and the async/generator
+ * constructors, `WebAssembly`, shared memory/atomics, `process.binding`/
+ * `dlopen`/`exit`/`kill` and prototype/JSON/Math mutation. Because those
+ * constructor guards are what gate every JavaScript escape, secondary hygiene
+ * patches are not worth crashing the request path over.
+ *
+ * The box is a process-wide singleton whose config must match across every
+ * `Bash` instance, so this object holds only comparable values - no callbacks,
+ * which would compare by reference and conflict between dev module instances.
+ * If a future just-bash release leaks another type, either add it here or set
+ * `enabled: false` to drop the box entirely.
+ */
+export const DEFENSE_IN_DEPTH: DefenseInDepthConfig = {
+  excludeViolationTypes: [
+    "performance_timing",
+    "process_timing",
+    "error_prepare_stack_trace",
+    "setTimeout",
+    "setInterval",
+    "setImmediate",
+    "weak_ref",
+    "finalization_registry",
+    "reflect",
+    "proxy",
+    "process_env",
+    "module_load",
+    "module_resolve_filename",
+    "promise_then_after_deactivate",
+  ],
+};
+
+/**
+ * Held on `globalThis` so a dev-server module reload (or a second bundle of
+ * this module) reuses the same sandboxes instead of building new `Bash`
+ * instances - which would also re-trigger the defense-config singleton check.
+ */
+const workspaceRegistry = globalThis as typeof globalThis & {
+  __fileRagWorkspaces?: Map<string, WorkspaceState>;
+  __fileRagWorkspaceCreations?: Map<string, Promise<WorkspaceState>>;
+};
+
+const workspaces: Map<string, WorkspaceState> =
+  (workspaceRegistry.__fileRagWorkspaces ??= new Map());
+const creations: Map<string, Promise<WorkspaceState>> =
+  (workspaceRegistry.__fileRagWorkspaceCreations ??= new Map());
 
 export class WorkspaceLimitError extends Error {}
 
@@ -183,8 +240,20 @@ async function createWorkspace(
   sessionId: string,
   files: VfsFileInput[]
 ): Promise<WorkspaceState> {
+  // The sandbox is built here rather than by `createBashTool` because the
+  // defense-in-depth configuration is only settable on the Bash instance.
+  const bash = new Bash({
+    // Paths must be absolute under the destination: just-bash writes relative
+    // keys to the file-system root, not to `cwd`.
+    files: Object.fromEntries(
+      files.map((file) => [`${WORKSPACE_ROOT}/${file.path}`, file.content])
+    ),
+    cwd: WORKSPACE_ROOT,
+    defenseInDepth: DEFENSE_IN_DEPTH,
+  });
+
   const { sandbox } = await createBashTool({
-    files: Object.fromEntries(files.map((file) => [file.path, file.content])),
+    sandbox: bash,
     destination: WORKSPACE_ROOT,
     maxFiles: MAX_FILES,
     maxOutputLength: MAX_OUTPUT_LENGTH,
