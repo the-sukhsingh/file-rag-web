@@ -42,7 +42,20 @@ const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const model = groq("openai/gpt-oss-120b");
+const MODEL_ID = "openai/gpt-oss-120b";
+
+const model = groq(MODEL_ID);
+
+/**
+ * gpt-oss thinks before it acts, and that thinking is most of a turn's
+ * latency: at the default effort it can deliberate for longer than the search
+ * itself takes. `low` keeps the tool use, which is where the effort is
+ * actually needed, and drops the deliberation tokens. The option is only sent
+ * to the models that accept it, so switching to a plain chat model stays valid.
+ */
+const MODEL_SETTINGS = MODEL_ID.includes("gpt-oss")
+  ? { providerOptions: { groq: { reasoningEffort: "low" as const } } }
+  : {};
 
 const encoder = new TextEncoder();
 
@@ -172,6 +185,7 @@ async function* streamClosingAnswer({
       // valid, but the model cannot reach for it while answering.
       toolChoice: "none",
       abortSignal: signal,
+      ...MODEL_SETTINGS,
     });
 
     let wrote = false;
@@ -224,7 +238,16 @@ async function* streamTurn({
     messages,
     tools,
     stopWhen: isStepCount(MAX_AGENT_STEPS),
+    // A turn is only as fast as its slowest step, so the last step of the loop
+    // is prose instead of another command: the tools stay declared - the calls
+    // already in the transcript have to remain valid - but the model cannot
+    // reach for them, so a question that used its whole search budget still
+    // ends with an answer rather than one more command and a separate closing
+    // request.
+    prepareStep: ({ stepNumber }) =>
+      stepNumber >= MAX_AGENT_STEPS - 1 ? { toolChoice: "none" } : undefined,
     abortSignal: signal,
+    ...MODEL_SETTINGS,
   });
 
   let ranCommand = false;
