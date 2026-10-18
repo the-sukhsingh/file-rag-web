@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
-import { generateText, isStepCount, type ModelMessage } from "ai";
+import {
+  generateText,
+  isStepCount,
+  type ModelMessage,
+  type ToolSet,
+} from "ai";
 import { createGroq } from "@ai-sdk/groq";
 
 import {
   MAX_AGENT_STEPS,
+  buildToolNameRule,
   buildWorkspaceSystemPrompt,
   createWorkspaceToolkit,
 } from "@/lib/bash-tool";
@@ -71,14 +77,21 @@ function toCommandReport(
   call: ToolCallLike,
   output: unknown
 ): CommandReport {
-  const command = describeCall(call.toolName, call.input);
   const result = (output ?? {}) as {
+    command?: unknown;
     stdout?: unknown;
     stderr?: unknown;
     exitCode?: unknown;
     content?: unknown;
     success?: unknown;
   };
+
+  // The workspace tools report the exact shell line they ran, which is more
+  // accurate than re-deriving one from the tool name and its arguments.
+  const command =
+    typeof result.command === "string"
+      ? result.command
+      : describeCall(call.toolName, call.input);
 
   if (
     typeof result.stdout === "string" ||
@@ -119,6 +132,75 @@ function toCommandReport(
   };
 }
 
+/**
+ * Matches the provider error raised when the model calls a tool that was never
+ * advertised: `attempted to call tool 'cat' which was not in request.tools`.
+ */
+const UNKNOWN_TOOL =
+  /attempted to call tool '([^']+)' which was not in request\.tools/i;
+
+/** Pulls the offending tool name out of a provider error, if that is what it is. */
+function attemptedToolName(error: unknown): string | undefined {
+  const body = (error as { responseBody?: unknown })?.responseBody;
+  const text = [
+    error instanceof Error ? error.message : String(error),
+    typeof body === "string" ? body : "",
+  ].join("\n");
+
+  return UNKNOWN_TOOL.exec(text)?.[1];
+}
+
+/**
+ * Runs the agent turn. Providers reject the whole request - non-retryably -
+ * when the model invents a tool name, so instead of failing the turn we tell
+ * the model which names exist and give it one more attempt.
+ */
+async function askAgent({
+  system,
+  messages,
+  tools,
+  toolNames,
+}: {
+  system: string;
+  messages: ModelMessage[];
+  tools: ToolSet;
+  toolNames: string[];
+}) {
+  const request = {
+    model,
+    system,
+    messages,
+    tools,
+    stopWhen: isStepCount(MAX_AGENT_STEPS),
+  };
+
+  try {
+    return await generateText(request);
+  } catch (error) {
+    const attempted = attemptedToolName(error);
+    if (!attempted) throw error;
+
+    console.warn(
+      `Model called unadvertised tool "${attempted}"; retrying with the tool list.`
+    );
+
+    return await generateText({
+      ...request,
+      messages: [
+        ...messages,
+        {
+          role: "user",
+          content: [
+            `You called a tool named "${attempted}", which does not exist.`,
+            buildToolNameRule(toolNames),
+            "Retry the request using one of those exact names.",
+          ].join(" "),
+        },
+      ],
+    });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -149,17 +231,17 @@ export async function POST(request: Request) {
       toolkit.workspace.fileCount > 0
         ? buildWorkspaceSystemPrompt(toolkit)
         : [
-            "You are a document retrieval assistant with a bash tool.",
-            "The virtual file system is empty: no documents have been imported yet.",
+            "You are a document retrieval assistant with access to a virtual file system.",
+            "The file system is empty: no documents have been imported yet.",
             "Tell the user to import a PDF so there is something to search.",
+            buildToolNameRule(toolkit.toolNames),
           ].join(" ");
 
-    const response = await generateText({
-      model,
+    const response = await askAgent({
       system,
       messages,
       tools: toolkit.tools,
-      stopWhen: isStepCount(MAX_AGENT_STEPS),
+      toolNames: toolkit.toolNames,
     });
 
     const commands = (response.toolCalls as ToolCallLike[]).map((call) => {
