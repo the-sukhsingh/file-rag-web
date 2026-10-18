@@ -316,6 +316,17 @@ export function workspaceSummary(sessionId: string): VfsSummary | null {
   };
 }
 
+/** Snapshot that is guaranteed to exist, for API responses. */
+export async function ensureWorkspaceSummary(
+  sessionId: string,
+  files: VfsFileInput[] = []
+): Promise<VfsSummary> {
+  await ensureWorkspace(sessionId, files);
+  const summary = workspaceSummary(sessionId);
+  if (!summary) throw new Error("Workspace vanished while reading its summary.");
+  return summary;
+}
+
 export async function readWorkspaceFile(
   sessionId: string,
   path: string
