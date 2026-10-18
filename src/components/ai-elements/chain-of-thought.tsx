@@ -6,6 +6,9 @@ import {
     CircleCheckIcon,
     FilePenLineIcon,
     FileTextIcon,
+    FolderTreeIcon,
+    HashIcon,
+    SearchIcon,
     TerminalIcon,
 } from "lucide-react"
 
@@ -26,12 +29,27 @@ import { cn } from "cn"
 interface Step {
     /** Trigger label, e.g. `Read docs/chunk-001.md`. */
     title: string
-    /** The exact command, shown on hover so the label can stay short. */
+    /** The exact command, shown on hover so the label stays readable. */
     command: string
     /** Icon for the step. */
     icon: React.ReactNode
     output: string
     failed: boolean
+}
+
+/** Icon per tool, so a trace of many steps still scans quickly. */
+const STEP_ICONS: Record<string, React.ReactNode> = {
+    readFile: <FileTextIcon />,
+    cat: <FileTextIcon />,
+    head: <FileTextIcon />,
+    tail: <FileTextIcon />,
+    writeFile: <FilePenLineIcon />,
+    grep: <SearchIcon />,
+    find: <SearchIcon />,
+    ls: <FolderTreeIcon />,
+    tree: <FolderTreeIcon />,
+    wc: <HashIcon />,
+    bash: <TerminalIcon />,
 }
 
 /**
@@ -40,33 +58,27 @@ interface Step {
  */
 function toStep(report: CommandReport): Step {
     const path = report.command.replace(/^(?:cat|writeFile)\s+/, "")
-    const trimmed = report.stdout.trim()
+    const stdout = report.stdout.trim()
     const error = report.stderr.trim()
 
-    const icon =
-        report.tool === "readFile" ? (
-            <FileTextIcon />
-        ) : report.tool === "writeFile" ? (
-            <FilePenLineIcon />
-        ) : (
-            <TerminalIcon />
-        )
-
-    const title =
-        report.tool === "readFile"
-            ? `Read ${path}`
-            : report.tool === "writeFile"
-              ? `Wrote ${path}`
-              : `Ran ${report.command}`
+    // `grep` exits 1 when nothing matched. That is an answer, not a failure.
+    const noMatches =
+        report.tool === "grep" && report.exitCode === 1 && !error
 
     return {
-        title,
+        title:
+            report.tool === "readFile"
+                ? `Read ${path}`
+                : report.tool === "writeFile"
+                  ? `Wrote ${path}`
+                  : `Ran ${report.command}`,
         command: report.command,
-        icon,
-        // stderr is kept even on a zero exit code: warnings explain odd output.
-        output:
-            [trimmed, error].filter(Boolean).join("\n") || "(no output)",
-        failed: report.exitCode !== 0,
+        icon: STEP_ICONS[report.tool] ?? <TerminalIcon />,
+        output: noMatches
+            ? "(no matching lines)"
+            : // stderr is kept even on a zero exit code: warnings explain odd output.
+              [stdout, error].filter(Boolean).join("\n") || "(no output)",
+        failed: report.exitCode !== 0 && !noMatches,
     }
 }
 
