@@ -49,12 +49,21 @@ export function MovePicker({
 
   /**
    * The folders an import creates are not places a reader can put something:
-   * they hold the passages of one document. They stay out of the list.
+   * one holds the document, and its children hold the chapters. They stay out
+   * of the list.
    */
-  const containers = React.useMemo(
-    () => new Set(documents.map((document) => document.folderId)),
-    [documents]
-  );
+  const containers = React.useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const document of documents) {
+      ids.add(document.folderId);
+      for (const folder of folders) {
+        if (folder.parentId === document.folderId) ids.add(folder.id);
+      }
+    }
+
+    return ids;
+  }, [documents, folders]);
 
   const visible = React.useMemo(() => {
     const query = search.trim().toLowerCase();
