@@ -12,7 +12,7 @@ import { cn } from "cn";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FolderSummary } from "@/components/library/library-provider";
-import type { Folder } from "@/lib/library/types";
+import type { DocumentRecord, Folder } from "@/lib/library/types";
 
 /**
  * The move picker.
@@ -23,6 +23,7 @@ import type { Folder } from "@/lib/library/types";
  */
 export function MovePicker({
   folders,
+  documents,
   summaries,
   currentFolderId,
   excludeIds = [],
@@ -30,6 +31,7 @@ export function MovePicker({
   className,
 }: {
   folders: Folder[];
+  documents: DocumentRecord[];
   summaries: Map<string, FolderSummary>;
   /** The folder the item is in now. */
   currentFolderId?: string | null;
@@ -45,17 +47,27 @@ export function MovePicker({
     [excludeIds, currentFolderId]
   );
 
+  /**
+   * The folders an import creates are not places a reader can put something:
+   * they hold the passages of one document. They stay out of the list.
+   */
+  const containers = React.useMemo(
+    () => new Set(documents.map((document) => document.folderId)),
+    [documents]
+  );
+
   const visible = React.useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return folders
       .filter((folder) => !excluded.has(folder.id))
+      .filter((folder) => !containers.has(folder.id))
       .filter((folder) => {
         if (!query) return true;
         return folder.path.toLowerCase().includes(query);
       })
       .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
-  }, [folders, excluded, search]);
+  }, [folders, excluded, containers, search]);
 
   // The root of the library is a destination of its own.
   const rootIsAllowed = !search.trim();

@@ -528,6 +528,7 @@ export default function FolderPage() {
           <div className="py-2">
             <MovePicker
               folders={library.folders}
+              documents={library.documents}
               summaries={library.summaries}
               currentFolderId={folderToMove?.id}
               excludeIds={
@@ -588,6 +589,7 @@ export default function FolderPage() {
           <div className="py-2">
             <MovePicker
               folders={library.folders}
+              documents={library.documents}
               summaries={library.summaries}
               currentFolderId={
                 documentToMove

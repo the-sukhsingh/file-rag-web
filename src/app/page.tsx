@@ -645,6 +645,7 @@ export default function LibraryDashboard() {
           <div className="py-2">
             <MovePicker
               folders={library.folders}
+              documents={library.documents}
               summaries={library.summaries}
               currentFolderId={folderToMove?.id}
               excludeIds={
