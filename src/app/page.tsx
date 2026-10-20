@@ -17,6 +17,7 @@ import {
 import { cn } from "cn";
 
 import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { ShowcaseCard } from "@/components/layout/showcase-card";
 import { TopNav } from "@/components/layout/top-nav";
 import { FolderTree, buildTree } from "@/components/library/folder-tree";
 import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
@@ -307,6 +308,11 @@ export default function LibraryDashboard() {
               </div>
             )}
           </div>
+        </section>
+
+        {/* ---- Product showcase --------------------------------------- */}
+        <section className="mt-20">
+          <ShowcaseCard />
         </section>
 
         {/* ---- Feature cards ----------------------------------------- */}
