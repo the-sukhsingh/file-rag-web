@@ -335,10 +335,21 @@ async function request(
 
   // The wire format is a little different from the internal one: a tool call
   // and its result are separate messages, and the arguments travel as a JSON
-  // string.
-  const wire = messages.map((message) => {
+  // string. A message can hold several results, so the list is flattened.
+  const wire: {
+    role: string;
+    content?: string | null;
+    tool_calls?: {
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }[];
+    tool_call_id?: string;
+  }[] = [];
+
+  for (const message of messages) {
     if (message.toolCalls?.length) {
-      return {
+      wire.push({
         role: "assistant",
         content: message.content || null,
         tool_calls: message.toolCalls.map((call) => ({
@@ -346,19 +357,23 @@ async function request(
           type: "function",
           function: { name: call.name, arguments: call.arguments },
         })),
-      };
+      });
+      continue;
     }
 
     if (message.toolResults?.length) {
-      return message.toolResults.map((result) => ({
-        role: "tool",
-        tool_call_id: result.id,
-        content: result.content,
-      }));
+      for (const result of message.toolResults) {
+        wire.push({
+          role: "tool",
+          tool_call_id: result.id,
+          content: result.content,
+        });
+      }
+      continue;
     }
 
-    return { role: message.role, content: message.content };
-  });
+    wire.push({ role: message.role, content: message.content });
+  }
 
   let response: Response;
   try {
