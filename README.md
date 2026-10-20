@@ -30,6 +30,17 @@ Then open the app, add your Groq key under **API key**, and import a PDF.
 The key is verified against Groq before it is saved, so a typo is caught now
 rather than at the first question.
 
+## Light and dark
+
+The app follows your system by default, and the switch in the navigation bar
+sets it to light or dark outright. The choice is stored on your device and
+applied before the first paint, so there is no flash of the wrong theme when
+the page loads.
+
+The palette keeps its meaning in both themes. `text-charcoal` is always the
+main text colour and `bg-paper-white` is always the raised surface, whatever
+the theme - the values behind those names change, the roles do not.
+
 ## How a question is answered
 
 1. The question is embedded and run through the same retriever as the
