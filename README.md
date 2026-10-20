@@ -57,22 +57,44 @@ Every passage in a folder has one of three states:
 Pin a passage to force it in, exclude one to keep it out. Both are per
 folder, and both survive the conversation.
 
+## Managing the library
+
+The library is a tree of folders, and a folder is the unit you chat with.
+
+```
+/                          the library: a card for every folder
+/folder/<id>               manage a folder: its documents, its sub-folders
+/folder/<id>/chat          ask that folder
+```
+
+**A folder** holds documents. It can be renamed, moved, nested under another
+folder, or deleted - and the delete says what will go with it.
+
+**A document** is a PDF that was split into chapters and passages. It can be
+moved to another folder, or deleted. Moving one carries its passages with it.
+
+**The import containers are not yours to manage.** When a PDF is imported it
+brings a folder for the document and a folder per chapter, and the passages
+live in those. They stay out of the tree and out of the move picker: the
+document is what you put in a folder, and that is what you see.
+
 ## Layout of the code
 
 ```
 src/
   app/
-    page.tsx                  the library dashboard
-    folder/[folder]/page.tsx  a folder and its chat
+    page.tsx                    the library dashboard
+    folder/[folder]/page.tsx    managing a folder
+    folder/[folder]/chat/       asking a folder
   components/
-    chat/                     the conversation, the prompt, the context panel
-    layout/                   the nav, the settings, the showcase card
-    library/                  the tree, the providers, the import dialog
+    chat/                       the conversation, the prompt, the context panel
+    layout/                     the nav, the settings, the showcase card
+    library/                    the tree, the providers, the import dialog
   lib/
-    library/                  the model, the IndexedDB store, the importer
-    retrieval/                the tokenizer, the embeddings, the hybrid search
-    groq/                     the BYOK client and the retrieval agent
-    pdf.ts                    PDF.js extraction and chunking
+    library/                    the model, the IndexedDB store, the importer
+    retrieval/                  the tokenizer, the embeddings, the hybrid search
+    groq/                       the BYOK client and the retrieval agent
+    pdf.ts                      PDF.js extraction and chunking
 ```
 
 ## Scripts
