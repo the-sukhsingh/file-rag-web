@@ -14,6 +14,8 @@ import {
   listChunksByFolder,
   listDocuments,
   listFolders,
+  moveDocument,
+  moveFolder,
   putFolder,
 } from "@/lib/library/store";
 import type { Chunk, DocumentRecord, Folder } from "@/lib/library/types";
@@ -26,23 +28,42 @@ import { indexChunks } from "@/lib/retrieval/index";
  * memory; the chunk list is fetched per folder, because a large library would
  * not fit comfortably in memory and the retriever only ever needs the folder
  * that is open.
+ *
+ * A folder holds documents. A document is imported into a folder, and it
+ * brings a chapter folder with it, so the tree the user sees has two kinds of
+ * node: the folders they made, and the documents they added.
  */
+
+export interface FolderSummary {
+  /** The folder itself. */
+  folder: Folder;
+  /** Folders directly inside this one. */
+  childCount: number;
+  /** Documents directly inside this one. */
+  documentCount: number;
+  /** Passages in this folder and everything under it. */
+  passageCount: number;
+  /** The most recent change to anything inside it. */
+  updatedAt: number;
+}
 
 interface LibraryContextValue {
   folders: Folder[];
   documents: DocumentRecord[];
   ready: boolean;
-  /** Folders that hold nothing yet, and so cannot be chatted with. */
-  folderHasContent: (folderId: string) => boolean;
+  /** A summary of every folder, with the counts the tree needs. */
+  summaries: Map<string, FolderSummary>;
   createFolder: (name: string, parentId: string | null) => Promise<Folder>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
   removeFolder: (folderId: string) => Promise<void>;
+  moveFolderTo: (folderId: string, parentId: string | null) => Promise<void>;
   importPdf: (
     file: File,
     parentId: string | null,
     onProgress?: (message: string, percent: number) => void
   ) => Promise<ImportResult>;
   removeDocument: (documentId: string) => Promise<void>;
+  moveDocumentTo: (documentId: string, folderId: string) => Promise<void>;
   loadChunks: (folderId: string) => Promise<Chunk[]>;
   clearAll: () => Promise<void>;
   /** How the background embedding job is going, if one is running. */
@@ -62,6 +83,14 @@ interface LibraryContextValue {
     documentFolder: Folder | undefined;
     document: DocumentRecord | undefined;
     chapterFolders: Folder[];
+  };
+  /** The chapter folders of a document, in reading order. */
+  chaptersOf: (documentId: string) => Folder[];
+  /** Everything under a folder, for the "what will be deleted" count. */
+  contentsOf: (folderId: string) => {
+    folders: number;
+    documents: number;
+    passages: number;
   };
 }
 
@@ -169,6 +198,15 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     [refresh]
   );
 
+  const moveFolderTo = React.useCallback(
+    async (folderId: string, parentId: string | null) => {
+      await moveFolder(folderId, parentId);
+      chunkCache.current.clear();
+      await refresh();
+    },
+    [refresh]
+  );
+
   const importPdf = React.useCallback(
     async (
       file: File,
@@ -211,6 +249,15 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     [refresh]
   );
 
+  const moveDocumentTo = React.useCallback(
+    async (documentId: string, folderId: string) => {
+      await moveDocument(documentId, folderId);
+      chunkCache.current.clear();
+      await refresh();
+    },
+    [refresh]
+  );
+
   const loadChunks = React.useCallback(async (folderId: string) => {
     const cached = chunkCache.current.get(folderId);
     if (cached) return cached;
@@ -226,21 +273,80 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     await refresh();
   }, [refresh]);
 
+  /**
+   * The counts the tree needs: how many folders and documents sit inside a
+   * folder, how many passages they add up to, and when it last changed.
+   */
+  const summaries = React.useMemo(() => {
+    const byParent = new Map<string | null, Folder[]>();
+    for (const folder of folders) {
+      const list = byParent.get(folder.parentId);
+      if (list) list.push(folder);
+      else byParent.set(folder.parentId, [folder]);
+    }
+
+    const documentsByFolder = new Map<string, DocumentRecord[]>();
+    for (const document of documents) {
+      const list = documentsByFolder.get(document.folderId);
+      if (list) list.push(document);
+      else documentsByFolder.set(document.folderId, [document]);
+    }
+
+    const result = new Map<string, FolderSummary>();
+
+    // The count of a folder is the count of what is directly inside it plus
+    // the counts of its children, so the tree is built from the leaves up.
+    const compute = (folder: Folder): FolderSummary => {
+      const children = byParent.get(folder.id) ?? [];
+      const own = documentsByFolder.get(folder.id) ?? [];
+
+      const childSummaries = children.map(compute);
+      const passageCount =
+        own.reduce((total, document) => total + document.chunkCount, 0) +
+        childSummaries.reduce((total, child) => total + child.passageCount, 0);
+
+      const updatedAt = Math.max(
+        folder.updatedAt,
+        ...own.map((document) => document.updatedAt),
+        ...childSummaries.map((child) => child.updatedAt)
+      );
+
+      const summary: FolderSummary = {
+        folder,
+        childCount: children.length,
+        documentCount: own.length,
+        passageCount,
+        updatedAt,
+      };
+
+      result.set(folder.id, summary);
+      return summary;
+    };
+
+    for (const folder of folders) {
+      if (folder.parentId === null) compute(folder);
+    }
+    // Any folder whose parent is missing is treated as a root.
+    for (const folder of folders) {
+      if (!result.has(folder.id)) compute(folder);
+    }
+
+    return result;
+  }, [folders, documents]);
+
   const value = React.useMemo<LibraryContextValue>(
     () => ({
       folders,
       documents,
       ready,
-      folderHasContent: (folderId) =>
-        documents.some((document) => document.folderId === folderId) ||
-        folders.some(
-          (folder) => folder.parentId === folderId && folder.id !== folderId
-        ),
+      summaries,
       createFolder,
       renameFolder,
       removeFolder,
+      moveFolderTo,
       importPdf,
       removeDocument: removeDocumentById,
+      moveDocumentTo,
       loadChunks,
       clearAll,
       indexing,
@@ -270,16 +376,56 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
           : [];
         return { documentFolder, document, chapterFolders };
       },
+      chaptersOf: (documentId) => {
+        const document = documents.find((entry) => entry.id === documentId);
+        if (!document) return [];
+        return folders
+          .filter((folder) => folder.parentId === document.folderId)
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      },
+      contentsOf: (folderId) => {
+        const ids = new Set<string>([folderId]);
+        let grew = true;
+        while (grew) {
+          grew = false;
+          for (const folder of folders) {
+            if (
+              folder.parentId &&
+              ids.has(folder.parentId) &&
+              !ids.has(folder.id)
+            ) {
+              ids.add(folder.id);
+              grew = true;
+            }
+          }
+        }
+
+        const inside = documents.filter((document) =>
+          ids.has(document.folderId)
+        );
+
+        return {
+          folders: ids.size - 1,
+          documents: inside.length,
+          passages: inside.reduce(
+            (total, document) => total + document.chunkCount,
+            0
+          ),
+        };
+      },
     }),
     [
       folders,
       documents,
       ready,
+      summaries,
       createFolder,
       renameFolder,
       removeFolder,
+      moveFolderTo,
       importPdf,
       removeDocumentById,
+      moveDocumentTo,
       loadChunks,
       clearAll,
       indexing,
