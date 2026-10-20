@@ -388,7 +388,7 @@ export default function LibraryDashboard() {
 
                       <Button
                         size="xs"
-                        onClick={() => router.push(`/folder/${folder.id}/chat`)}
+                        onClick={() => router.push(`/folder/${folder.id}`)}
                         disabled={passageCount === 0}
                         className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet disabled:opacity-40"
                       >
@@ -425,15 +425,15 @@ export default function LibraryDashboard() {
                     <span className="font-mono text-[10px] text-pebble">
                       At the library root
                     </span>
-                    <Button
-                      size="xs"
-                      onClick={() =>
-                        router.push(
-                          `/folder/${library.documentLocation(document.id).documentFolder?.id ?? ""}/chat`
-                        )
-                      }
-                      className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
-                    >
+                      <Button
+                        size="xs"
+                        onClick={() =>
+                          router.push(
+                            `/folder/${library.documentLocation(document.id).documentFolder?.id ?? ""}`
+                          )
+                        }
+                        className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
+                      >
                       <MessageSquareIcon className="size-3" />
                       Ask
                     </Button>

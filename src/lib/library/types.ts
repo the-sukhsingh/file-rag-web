@@ -57,6 +57,8 @@ export interface Chunk {
   embedding: number[] | null;
   /** Tokens of the chunk, lowercased. Kept so BM25 needs no re-tokenising. */
   tokens: string[];
+  /** The name the passage has as a file, e.g. `003.md`. */
+  fileName?: string;
   createdAt: number;
   updatedAt?: number;
 }

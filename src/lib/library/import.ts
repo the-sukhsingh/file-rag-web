@@ -94,6 +94,7 @@ export async function importPdfIntoFolder(
         folderId: sectionFolder.id,
         section: section.title,
         index: chunkIndex,
+        fileName: `${String(chunkIndex + 1).padStart(3, "0")}.md`,
         startPage: section.startPage,
         endPage: section.endPage,
         text,

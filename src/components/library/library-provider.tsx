@@ -10,15 +10,21 @@ import {
 } from "@/lib/library/import";
 import {
   clearLibrary,
+  createChunk,
+  deleteChunk,
   deleteFolderTree,
   listChunksByFolder,
   listDocuments,
   listFolders,
+  moveChunk,
   moveDocument,
   moveFolder,
   putFolder,
+  updateChunkEmbedding,
+  updateChunkText,
 } from "@/lib/library/store";
 import type { Chunk, DocumentRecord, Folder } from "@/lib/library/types";
+import { embedTexts } from "@/lib/retrieval/embeddings";
 import { indexChunks } from "@/lib/retrieval/index";
 
 /**
@@ -64,6 +70,19 @@ interface LibraryContextValue {
   ) => Promise<ImportResult>;
   removeDocument: (documentId: string) => Promise<void>;
   moveDocumentTo: (documentId: string, folderId: string) => Promise<void>;
+  /** Rewrites a passage and re-embeds it. */
+  editChunk: (chunkId: string, text: string) => Promise<void>;
+  /** Adds a passage to a chapter folder. */
+  addChunk: (input: {
+    documentId: string;
+    folderId: string;
+    section: string;
+    text: string;
+  }) => Promise<void>;
+  /** Removes a passage. */
+  removeChunk: (chunkId: string) => Promise<void>;
+  /** Moves a passage into another chapter folder. */
+  moveChunkTo: (chunkId: string, folderId: string) => Promise<void>;
   loadChunks: (folderId: string) => Promise<Chunk[]>;
   clearAll: () => Promise<void>;
   /** How the background embedding job is going, if one is running. */
@@ -267,6 +286,64 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     return chunks;
   }, []);
 
+  /**
+   * Re-embeds a passage after its text changed, so the vector search keeps
+   * describing what the passage now says.
+   */
+  const reEmbed = React.useCallback(async (chunk: Chunk) => {
+    const vectors = await embedTexts([chunk.text]);
+    const vector = vectors?.[0];
+    if (!vector) return;
+    await updateChunkEmbedding(chunk.id, vector);
+    chunkCache.current.clear();
+    setRevision((value) => value + 1);
+  }, []);
+
+  const editChunk = React.useCallback(
+    async (chunkId: string, text: string) => {
+      const updated = await updateChunkText(chunkId, text);
+      if (!updated) return;
+      chunkCache.current.clear();
+      setRevision((value) => value + 1);
+      void reEmbed(updated);
+    },
+    [reEmbed]
+  );
+
+  const addChunk = React.useCallback(
+    async (input: {
+      documentId: string;
+      folderId: string;
+      section: string;
+      text: string;
+    }) => {
+      const siblings = await listChunksByFolder(input.folderId);
+      const created = await createChunk({
+        ...input,
+        index: siblings.length,
+      });
+      chunkCache.current.clear();
+      setRevision((value) => value + 1);
+      void reEmbed(created);
+    },
+    [reEmbed]
+  );
+
+  const removeChunk = React.useCallback(async (chunkId: string) => {
+    await deleteChunk(chunkId);
+    chunkCache.current.clear();
+    setRevision((value) => value + 1);
+  }, []);
+
+  const moveChunkTo = React.useCallback(
+    async (chunkId: string, folderId: string) => {
+      await moveChunk(chunkId, folderId);
+      chunkCache.current.clear();
+      setRevision((value) => value + 1);
+    },
+    []
+  );
+
   const clearAll = React.useCallback(async () => {
     await clearLibrary();
     chunkCache.current.clear();
@@ -347,6 +424,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       importPdf,
       removeDocument: removeDocumentById,
       moveDocumentTo,
+      editChunk,
+      addChunk,
+      removeChunk,
+      moveChunkTo,
       loadChunks,
       clearAll,
       indexing,
@@ -426,6 +507,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       importPdf,
       removeDocumentById,
       moveDocumentTo,
+      editChunk,
+      addChunk,
+      removeChunk,
+      moveChunkTo,
       loadChunks,
       clearAll,
       indexing,
