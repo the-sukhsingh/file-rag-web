@@ -199,7 +199,7 @@ export default function FolderPage() {
               size="xs"
               onClick={() => router.push(`/folder/${folder.id}/chat`)}
               disabled={!canChat}
-              className="h-8 gap-1 rounded-[8px] bg-electric-indigo px-3 font-mono text-[10px] uppercase tracking-[0.04em] text-white hover:bg-deep-violet disabled:opacity-40"
+              className="h-8 gap-1 rounded-[8px] bg-electric-indigo px-3 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet disabled:opacity-40"
             >
               <MessageSquareIcon className="size-3" />
               Ask

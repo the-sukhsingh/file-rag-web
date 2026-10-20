@@ -196,7 +196,7 @@ export default function LibraryDashboard() {
                 setNewFolderParent(null);
                 setIsImportOpen(true);
               }}
-              className="h-11 rounded-[8px] bg-electric-indigo px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+              className="h-11 rounded-[8px] bg-electric-indigo px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
             >
               <UploadIcon className="size-4" />
               Import PDF
@@ -388,7 +388,7 @@ export default function LibraryDashboard() {
                         size="xs"
                         onClick={() => router.push(`/folder/${folder.id}/chat`)}
                         disabled={passageCount === 0}
-                        className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-white hover:bg-deep-violet disabled:opacity-40"
+                        className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet disabled:opacity-40"
                       >
                         <MessageSquareIcon className="size-3" />
                         Ask
@@ -430,7 +430,7 @@ export default function LibraryDashboard() {
                           `/folder/${library.documentLocation(document.id).documentFolder?.id ?? ""}/chat`
                         )
                       }
-                      className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+                      className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
                     >
                       <MessageSquareIcon className="size-3" />
                       Ask

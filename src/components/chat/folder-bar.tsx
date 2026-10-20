@@ -83,7 +83,7 @@ export function FolderEmpty({
         <button
           type="button"
           onClick={onOpenSettings}
-          className="mt-1 rounded-[8px] bg-electric-indigo px-4 py-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-white transition-colors hover:bg-deep-violet"
+          className="mt-1 rounded-[8px] bg-electric-indigo px-4 py-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-primary-foreground transition-colors hover:bg-deep-violet"
         >
           Add key
         </button>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
+import { ModeToggle } from "@/components/theme/ThemeToggle";
 
 /**
  * The site's navigation bar.
@@ -38,7 +39,7 @@ export function TopNav({
     >
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <span className="flex size-6 items-center justify-center rounded-[7px] bg-electric-indigo text-[12px] font-semibold text-white">
+          <span className="flex size-6 items-center justify-center rounded-[7px] bg-electric-indigo text-[12px] font-semibold text-primary-foreground">
             Q
           </span>
           <span className="tag-label text-charcoal">Quarry</span>
@@ -64,6 +65,7 @@ export function TopNav({
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {actions}
+          <ModeToggle />
           <Button
             variant="ghost"
             onClick={onOpenSettings}
@@ -74,7 +76,7 @@ export function TopNav({
           {onNewFolder && (
             <Button
               onClick={onNewFolder}
-              className="h-8 rounded-[8px] bg-electric-indigo px-3.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+              className="h-8 rounded-[8px] bg-electric-indigo px-3.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
             >
               New folder
             </Button>

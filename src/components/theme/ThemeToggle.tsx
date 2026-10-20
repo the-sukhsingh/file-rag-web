@@ -1,94 +1,112 @@
-"use client"
+"use client";
 
+import * as React from "react";
+import { useTheme } from "next-themes";
+import {
+  CheckIcon,
+  LaptopIcon,
+  MoonIcon,
+  SunIcon,
+} from "lucide-react";
 import { cn } from "cn";
-import { useTheme } from "next-themes"
-import { SVGProps } from "react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-export function ModeToggle({className=""}:{className?:string}) {
-    const { theme, systemTheme, setTheme } = useTheme();
-    const toggleTheme = () => {
-        if (theme === 'system') {
-            if (systemTheme === 'dark') {
-                setTheme('light');
-            } else {
-                setTheme('dark');
-            }
-        } else {
-            if (theme === 'dark') {
-                setTheme('light');
-            } else {
-                setTheme('dark');
-            }
-        }
-    }
-    const handleThemeToggle = () => {
-        toggleTheme();
-    };
+/**
+ * The theme switch.
+ *
+ * Three choices rather than a toggle, because "follow the system" is a real
+ * setting and a two-state button cannot express it: once you toggle away
+ * from the system, there is no way back to it without opening the OS
+ * settings.
+ */
 
+const THEMES = [
+  { id: "light", name: "Light", icon: SunIcon },
+  { id: "dark", name: "Dark", icon: MoonIcon },
+  { id: "system", name: "System", icon: LaptopIcon },
+] as const;
 
+/**
+ * Whether the client has taken over yet.
+ *
+ * The theme is only known in the browser, so the first render has to agree
+ * with the server. Reading it through `useSyncExternalStore` keeps that
+ * first render stable and avoids a flash of the wrong icon.
+ */
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+export function ModeToggle({ className }: { className?: string }) {
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const mounted = React.useSyncExternalStore(
+    emptySubscribe,
+    getClientSnapshot,
+    getServerSnapshot
+  );
+
+  const isDark = resolvedTheme === "dark";
+
+  if (!mounted) {
     return (
-        <button
-            aria-label="Toggle theme"
-            title="Toggle light & dark"
-            onClick={handleThemeToggle}
-            className={cn("rounded-md size-8 flex justify-center items-center aspect-square h-fit relative overflow-hidden bg-accent active:translate-y-px shadow-inner/0 hover:shadow-inner transition-all duration-75 ease-out", className)}
+      <span
+        className={cn("flex size-8 items-center justify-center", className)}
+        aria-hidden="true"
+      />
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
             type="button"
-        >
-            {
-                theme === 'dark' || (theme === 'system' && systemTheme === 'dark') ? (
-                    <Moon className="absolute top-0 left-0 translate-y-1/2 translate-x-1/2 size-4 scale-0 rotate-90 dark:scale-100 dark:rotate-0" />
-                ) : (
-                    <Sun className="size-4" />
-                )
-            }
-        </button>
-    )
+            aria-label={`Theme: ${theme ?? "system"}`}
+            title="Change the theme"
+            className={cn(
+              "flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal",
+              className
+            )}
+          >
+            {isDark ? (
+              <MoonIcon className="size-4" />
+            ) : (
+              <SunIcon className="size-4" />
+            )}
+          </button>
+        }
+      />
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.10em] text-pebble">
+          Theme
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {THEMES.map((entry) => {
+          const active = (theme ?? "system") === entry.id;
+          return (
+            <DropdownMenuItem
+              key={entry.id}
+              onClick={() => setTheme(entry.id)}
+              className="justify-between text-[13px]"
+            >
+              <span className="flex items-center gap-2">
+                <entry.icon className="size-3.5" />
+                {entry.name}
+              </span>
+              {active && <CheckIcon className="size-3.5 text-electric-indigo" />}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
-
-const Sun = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 3v1" />
-    <path d="m18.364 5.636-.707.707" />
-    <path d="M20 12h1" />
-    <path d="m17.657 17.657.707.707" />
-    <path d="M12 20v1" />
-    <path d="m6.343 17.657-.707.707" />
-    <path d="M3 12h1" />
-    <path d="m5.636 5.636.707.707" />
-  </svg>
-
-)
-
-const Moon = (props: SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-
-  >
-    <path
-      d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"
-    />
-  </svg>
-
-)

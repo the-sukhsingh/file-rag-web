@@ -103,7 +103,7 @@ export function ShowcaseCard() {
               <span className="flex size-7 items-center justify-center rounded-[8px] bg-electric-indigo">
                 <svg
                   viewBox="0 0 24 24"
-                  className="size-3.5 text-white"
+                  className="size-3.5 text-primary-foreground"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"

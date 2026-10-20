@@ -33,6 +33,25 @@ export const metadata: Metadata = {
     "Import PDFs, let them be split into chapters and chunks, then ask questions of any folder. Everything runs in your browser, with your own API key.",
 };
 
+/**
+ * Sets the theme before the page paints.
+ *
+ * Without this the page would render in the light theme and then snap to the
+ * dark one once React mounted, which reads as a glitch.
+ */
+const themeScript = `
+(function () {
+  try {
+    var stored = localStorage.getItem("theme");
+    var dark = stored === "dark" ||
+      (stored !== "light" &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -40,6 +59,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${displaySerif.variable} antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <Provider>{children}</Provider>
       </body>

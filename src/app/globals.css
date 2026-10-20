@@ -41,24 +41,13 @@
  * The design system in one place: a warm stone canvas, paper-white cards and a
  * single electric indigo accent. Every colour below is a literal from
  * `design.md`; nothing here is derived, so the tokens are the source of truth.
+ *
+ * The palette lives in `:root` and `.dark` rather than here, so that the
+ * names below can flip with the theme. A colour declared in `@theme` is
+ * compiled once and never changes, which would leave charcoal text on a
+ * near-black canvas.
  */
 @theme {
-  /* Colors */
-  --color-warm-bone: #fafaf9;
-  --color-paper-white: #ffffff;
-  --color-stone-mist: #e7e5e4;
-  --color-bark-grey: #79716b;
-  --color-charcoal: #292524;
-  --color-obsidian: #0c0a09;
-  --color-pebble: #a6a09b;
-  --color-electric-indigo: #615fff;
-  --color-deep-violet: #4f39f6;
-  --color-terracotta: #d97757;
-  --color-lichen-green: #5ea500;
-  --color-tide-teal: #22b8cd;
-  --color-alarm-red: #ff0000;
-  --color-sapphire-link: #007ebb;
-
   /* Typography — Font Families */
   --font-geist:
     "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -122,6 +111,25 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /*
+   * The palette. These are referenced rather than declared so that the dark
+   * theme can swap their values, and the classes built from them - `text-
+   * charcoal`, `bg-paper-white`, `border-stone-mist` - follow along.
+   */
+  --color-warm-bone: var(--warm-bone);
+  --color-paper-white: var(--paper-white);
+  --color-stone-mist: var(--stone-mist);
+  --color-bark-grey: var(--bark-grey);
+  --color-charcoal: var(--charcoal);
+  --color-obsidian: var(--obsidian);
+  --color-pebble: var(--pebble);
+  --color-electric-indigo: var(--electric-indigo);
+  --color-deep-violet: var(--deep-violet);
+  --color-terracotta: var(--terracotta);
+  --color-lichen-green: var(--lichen-green);
+  --color-tide-teal: var(--tide-teal);
+  --color-alarm-red: var(--alarm-red);
+  --color-sapphire-link: var(--sapphire-link);
   --font-sans: var(--font-geist);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-geist);
@@ -171,6 +179,22 @@
  * reserved for primary actions.
  */
 :root {
+  /* The palette, straight from `design.md`. */
+  --warm-bone: #fafaf9;
+  --paper-white: #ffffff;
+  --stone-mist: #e7e5e4;
+  --bark-grey: #79716b;
+  --charcoal: #292524;
+  --obsidian: #0c0a09;
+  --pebble: #a6a09b;
+  --electric-indigo: #615fff;
+  --deep-violet: #4f39f6;
+  --terracotta: #d97757;
+  --lichen-green: #5ea500;
+  --tide-teal: #22b8cd;
+  --alarm-red: #ff0000;
+  --sapphire-link: #007ebb;
+
   --background: #fafaf9;
   --foreground: #292524;
   --card: #ffffff;
@@ -209,16 +233,38 @@
  * The brief is a light theme, so the dark palette is a warm charcoal that
  * keeps the same relationships: darker canvas, lifted surfaces, the same
  * single violet accent.
+ *
+ * The palette names keep their meaning rather than their hex value. In light
+ * mode `paper-white` is a surface and `charcoal` is the text; in dark mode
+ * that swaps, so `paper-white` becomes the light text colour and `charcoal`
+ * becomes the dark surface. The classes built from them therefore stay
+ * correct - `text-charcoal` is always "the main text colour" and
+ * `bg-paper-white` is always "the raised surface".
  */
 .dark {
+  --warm-bone: #171514;
+  --paper-white: #fafaf9;
+  --stone-mist: #292524;
+  --bark-grey: #a6a09b;
+  --charcoal: #fafaf9;
+  --obsidian: #0c0a09;
+  --pebble: #79716b;
+  --electric-indigo: #7b7aff;
+  --deep-violet: #615fff;
+  --terracotta: #e08a6c;
+  --lichen-green: #7bc42a;
+  --tide-teal: #3fd0e6;
+  --alarm-red: #ff5555;
+  --sapphire-link: #3aa5dd;
+
   --background: #0c0a09;
   --foreground: #fafaf9;
   --card: #171514;
   --card-foreground: #fafaf9;
   --popover: #171514;
   --popover-foreground: #fafaf9;
-  --primary: #615fff;
-  --primary-foreground: #ffffff;
+  --primary: #7b7aff;
+  --primary-foreground: #0c0a09;
   --secondary: #292524;
   --secondary-foreground: #fafaf9;
   --muted: #292524;
@@ -228,16 +274,16 @@
   --destructive: #ff5555;
   --border: #292524;
   --input: #292524;
-  --ring: #615fff;
-  --chart-1: #615fff;
-  --chart-2: #d97757;
-  --chart-3: #22b8cd;
-  --chart-4: #5ea500;
+  --ring: #7b7aff;
+  --chart-1: #7b7aff;
+  --chart-2: #e08a6c;
+  --chart-3: #3fd0e6;
+  --chart-4: #7bc42a;
   --chart-5: #a6a09b;
   --sidebar: #0c0a09;
   --sidebar-foreground: #fafaf9;
-  --sidebar-primary: #615fff;
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: #7b7aff;
+  --sidebar-primary-foreground: #0c0a09;
   --sidebar-accent: #292524;
   --sidebar-accent-foreground: #fafaf9;
   --sidebar-border: #292524;

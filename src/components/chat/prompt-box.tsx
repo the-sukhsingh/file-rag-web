@@ -90,7 +90,7 @@ export function PromptBox({
                 className={cn(
                   "size-8 shrink-0 rounded-[9px] transition-colors",
                   canSend
-                    ? "bg-electric-indigo text-white hover:bg-deep-violet"
+                    ? "bg-electric-indigo text-primary-foreground hover:bg-deep-violet"
                     : "bg-stone-mist/60 text-pebble"
                 )}
               >
