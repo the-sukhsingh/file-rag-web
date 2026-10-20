@@ -28,11 +28,11 @@ export function TopNav({
   hasKey?: boolean;
   /** Replaces the centre links. */
   middle?: React.ReactNode;
-  /** Replaces the "New folder" button. */
+  /** Extra actions, placed before the settings button. */
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-40 w-full bg-background/90 backdrop-blur-sm">
+    <header className="shrink-0 border-b border-stone-mist bg-background/90 backdrop-blur-sm">
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <span className="flex size-6 items-center justify-center rounded-[7px] bg-electric-indigo text-[12px] font-semibold text-white">

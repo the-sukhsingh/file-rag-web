@@ -3,13 +3,21 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { PanelRightIcon, SparklesIcon } from "lucide-react";
+import {
+  MoreHorizontalIcon,
+  PanelRightIcon,
+  SparklesIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import {
   ContextPanel,
   type ContextSelection,
 } from "@/components/chat/context-panel";
-import { FolderBar, FolderEmpty } from "@/components/chat/folder-bar";
+import {
+  FolderBreadcrumb,
+  FolderEmpty,
+} from "@/components/chat/folder-bar";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
@@ -24,6 +32,12 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
@@ -252,38 +266,75 @@ export default function FolderPage() {
         hasKey={settings.hasKey}
         onOpenSettings={() => setIsSettingsOpen(true)}
         middle={
-          <FolderBar
-            folder={folder}
-            ancestors={ancestors}
-            passageCount={chunks.length}
-            messageCount={messages.length}
-            onClearChat={() => setMessages([])}
-            onDelete={() => {
-              void library.removeFolder(folder.id).then(() => router.push("/"));
-            }}
-          />
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <FolderBreadcrumb folder={folder} ancestors={ancestors} />
+            <span className="hidden shrink-0 items-center gap-1.5 font-mono text-[11px] text-pebble sm:flex">
+              <span className="h-3 w-px bg-stone-mist" />
+              {chunks.length} {chunks.length === 1 ? "passage" : "passages"}
+            </span>
+          </div>
         }
         actions={
-          <Drawer open={isContextOpen} onOpenChange={setIsContextOpen}>
-            <DrawerTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="Open the context panel"
-                  className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal lg:hidden"
+          <>
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setMessages([])}
+                className="h-8 px-2.5 text-[12px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
+              >
+                Clear
+              </Button>
+            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${folder.name}`}
+                    className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal"
+                  >
+                    <MoreHorizontalIcon className="size-4" />
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => {
+                    void library
+                      .removeFolder(folder.id)
+                      .then(() => router.push("/"));
+                  }}
                 >
-                  <PanelRightIcon className="size-4" />
-                </button>
-              }
-            />
-            <DrawerContent className="w-full sm:max-w-sm">
-              <DrawerTitle className="sr-only">Context</DrawerTitle>
-              <DrawerDescription className="sr-only">
-                The passages the assistant may use
-              </DrawerDescription>
-              {contextPanel}
-            </DrawerContent>
-          </Drawer>
+                  <Trash2Icon className="mr-2 size-3.5" />
+                  Delete folder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Drawer open={isContextOpen} onOpenChange={setIsContextOpen}>
+              <DrawerTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Open the context panel"
+                    className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal lg:hidden"
+                  >
+                    <PanelRightIcon className="size-4" />
+                  </button>
+                }
+              />
+              <DrawerContent className="w-full sm:max-w-sm">
+                <DrawerTitle className="sr-only">Context</DrawerTitle>
+                <DrawerDescription className="sr-only">
+                  The passages the assistant may use
+                </DrawerDescription>
+                {contextPanel}
+              </DrawerContent>
+            </Drawer>
+          </>
         }
       />
 
@@ -291,17 +342,17 @@ export default function FolderPage() {
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_320px]">
         <section className="flex min-h-0 flex-col">
           {messages.length === 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 py-10">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 px-6 pb-16">
               {hasContent ? (
                 <>
-                  <span className="flex size-10 items-center justify-center rounded-[12px] bg-electric-indigo/10 text-electric-indigo">
-                    <SparklesIcon className="size-5" />
-                  </span>
-                  <div className="flex flex-col gap-2 text-center">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <span className="flex size-10 items-center justify-center rounded-[12px] bg-electric-indigo/10 text-electric-indigo">
+                      <SparklesIcon className="size-5" />
+                    </span>
                     <h1 className="display-face text-[28px] text-charcoal">
                       Ask this folder
                     </h1>
-                    <p className="max-w-[40ch] text-[14px] leading-[1.5] text-bark-grey">
+                    <p className="max-w-[42ch] text-[14px] leading-[1.5] text-bark-grey">
                       {pluralize(chunks.length, "passage")} loaded. Ask anything
                       and I will find the parts that answer it.
                     </p>
