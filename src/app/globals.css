@@ -117,7 +117,7 @@
    * charcoal`, `bg-paper-white`, `border-stone-mist` - follow along.
    */
   --color-warm-bone: var(--warm-bone);
-  --color-paper-white: var(--paper-white);
+  --color-paper-white: var(--surface);
   --color-stone-mist: var(--stone-mist);
   --color-bark-grey: var(--bark-grey);
   --color-charcoal: var(--charcoal);
@@ -197,6 +197,8 @@
 
   --background: #fafaf9;
   --foreground: #292524;
+  /* The raised surface: cards, panels and the bands that sit on the canvas. */
+  --surface: #ffffff;
   --card: #ffffff;
   --card-foreground: #292524;
   --popover: #ffffff;
@@ -234,16 +236,14 @@
  * keeps the same relationships: darker canvas, lifted surfaces, the same
  * single violet accent.
  *
- * The palette names keep their meaning rather than their hex value. In light
- * mode `paper-white` is a surface and `charcoal` is the text; in dark mode
- * that swaps, so `paper-white` becomes the light text colour and `charcoal`
- * becomes the dark surface. The classes built from them therefore stay
- * correct - `text-charcoal` is always "the main text colour" and
- * `bg-paper-white` is always "the raised surface".
+ * The palette names keep their literal meaning - `paper-white` is still the
+ * white paper, `charcoal` is still the charcoal. What flips is the set of
+ * *roles* the semantic tokens point at, so `bg-card` is the raised surface in
+ * both themes and `text-foreground` is the main text in both themes.
  */
 .dark {
   --warm-bone: #171514;
-  --paper-white: #fafaf9;
+  --paper-white: #1c1a19;
   --stone-mist: #292524;
   --bark-grey: #a6a09b;
   --charcoal: #fafaf9;
@@ -259,6 +259,8 @@
 
   --background: #0c0a09;
   --foreground: #fafaf9;
+  /* The raised surface: cards, panels and the bands that sit on the canvas. */
+  --surface: #1c1a19;
   --card: #171514;
   --card-foreground: #fafaf9;
   --popover: #171514;
