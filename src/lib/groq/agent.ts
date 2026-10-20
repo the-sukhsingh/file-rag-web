@@ -8,7 +8,8 @@ import {
 
 import {
   complete,
-  completeWithTools,
+  stream,
+  streamWithTools,
   type GroqMessage,
   type GroqOptions,
   type GroqTool,
@@ -375,14 +376,17 @@ async function answerWithShell({
   let toolCalls: GroqMessage["toolCalls"];
 
   while (commandsRun < MAX_SHELL_COMMANDS) {
-    const reply = await completeWithTools(messages, {
-      ...options,
-      tools: [SHELL_TOOL],
-    });
+    // The text is streamed, so the reader watches the answer being written
+    // rather than waiting for the whole thing. A tool call comes back whole,
+    // because it has to run before the answer can continue.
+    const reply = await streamWithTools(
+      messages,
+      { ...options, tools: [SHELL_TOOL] },
+      onText
+    );
 
     if (!reply.toolCalls.length) {
       // The model has written its answer.
-      onText(reply.content);
       return { text: reply.content, citations, passages: accumulated };
     }
 
@@ -429,7 +433,8 @@ async function answerWithShell({
 
   // The model kept asking for commands. It gets the last word now, with
   // whatever the shell found.
-  const answer = await complete(
+  let answer = "";
+  await stream(
     [
       ...messages,
       {
@@ -438,10 +443,13 @@ async function answerWithShell({
           "Answer the question now, using the passages and the command output above. Cite the passages you used.",
       },
     ],
-    options
+    options,
+    (delta) => {
+      answer += delta;
+      onText(delta);
+    }
   );
 
-  onText(answer);
   return { text: answer, citations, passages: accumulated };
 }
 

@@ -272,6 +272,99 @@ export async function completeWithTools(
 }
 
 /**
+ * A completion that streams and may ask for a tool.
+ *
+ * The text arrives as it is written, so the reader sees the answer being
+ * composed instead of waiting for the whole thing. A tool call is still
+ * returned whole, because it has to be run before the answer continues.
+ */
+export async function streamWithTools(
+  messages: GroqMessage[],
+  options: GroqOptions,
+  onDelta: (delta: string) => void
+): Promise<{ content: string; toolCalls: GroqToolCall[] }> {
+  const response = await request(messages, options, true);
+  const body = response.body;
+  if (!body) throw new GroqError("The response had no body", response.status);
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  // The tool call arrives as fragments too: the name first, then the
+  // arguments in pieces.
+  let pendingCall: { id: string; name: string; arguments: string } | null = null;
+  const toolCalls: GroqToolCall[] = [];
+
+  const flushCall = () => {
+    if (!pendingCall) return;
+    toolCalls.push({ ...pendingCall });
+    pendingCall = null;
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+
+      const data = trimmed.slice(5).trim();
+      if (data === "[DONE]") continue;
+
+      try {
+        const frame = JSON.parse(data) as {
+          choices?: {
+            delta?: {
+              content?: string | null;
+              tool_calls?: {
+                index?: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }[];
+            };
+          }[];
+        };
+
+        const delta = frame.choices?.[0]?.delta;
+
+        if (delta?.content) {
+          content += delta.content;
+          onDelta(delta.content);
+        }
+
+        for (const call of delta?.tool_calls ?? []) {
+          if (!pendingCall) {
+            pendingCall = {
+              id: call.id ?? `call-${call.index ?? 0}`,
+              name: call.function?.name ?? "",
+              arguments: "",
+            };
+          }
+          if (call.function?.name) pendingCall.name = call.function.name;
+          if (call.function?.arguments) {
+            pendingCall.arguments += call.function.arguments;
+          }
+        }
+      } catch {
+        // A frame that cannot be parsed is skipped, not fatal.
+      }
+    }
+  }
+
+  flushCall();
+
+  return { content, toolCalls };
+}
+
+/**
  * A streaming completion. `onDelta` is called with each piece of text as it
  * arrives, so the answer can be shown while it is being written.
  */
