@@ -1,14 +1,11 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-import { VirtualFile } from "@/components/file-explorer/types";
-import { pluralize } from "@/lib/utils";
-
 /**
- * Client-side PDF indexing pipeline.
+ * Client-side PDF extraction.
  *
  * Reads a PDF entirely in the browser, uses its outline (bookmarks) as the
- * source of truth for chapters, then splits every chapter into overlapping
- * text chunks and exposes them as virtual files, one folder per chapter.
+ * source of truth for chapters, and returns the text of every chapter so the
+ * caller can chunk it and store it.
  */
 
 export const DEFAULT_TARGET_CHARS = 1200;
@@ -30,16 +27,24 @@ export interface PdfChapter {
   chunkCount: number;
 }
 
-export interface PdfImportResult {
+/** One chapter of a document, with the text of its pages. */
+export interface PdfSection {
+  title: string;
+  /** 1-based page numbers. */
+  startPage: number;
+  endPage: number;
+  text: string;
+}
+
+export interface ExtractedPdf {
   fileName: string;
   pageCount: number;
-  chapters: PdfChapter[];
-  files: VirtualFile[];
-  /** False when the PDF has no usable outline and a single folder was created. */
+  sections: PdfSection[];
+  /** False when the PDF has no usable outline and a single section was made. */
   usedOutline: boolean;
 }
 
-interface PdfSection {
+interface PdfSectionRange {
   title: string;
   startPageIndex: number;
   endPageIndex: number;
@@ -175,7 +180,7 @@ function buildSections(
   chapterEntries: OutlineEntry[],
   pageCount: number,
   fallbackTitle: string
-): { sections: PdfSection[]; usedOutline: boolean } {
+): { sections: PdfSectionRange[]; usedOutline: boolean } {
   const deduped = [
     ...new Map(chapterEntries.map((entry) => [entry.pageIndex, entry])).values(),
   ].sort((a, b) => a.pageIndex - b.pageIndex);
@@ -187,7 +192,7 @@ function buildSections(
     };
   }
 
-  const sections: PdfSection[] = [];
+  const sections: PdfSectionRange[] = [];
 
   // Pages before the first bookmark are still worth indexing.
   if (deduped[0].pageIndex > 0) {
@@ -316,91 +321,23 @@ export function chunkText(
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Virtual files                                                             */
-/* -------------------------------------------------------------------------- */
-
-function sanitizeSegment(value: string, fallback: string): string {
-  const cleaned = value
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/[\[\]\\/:*?"<>|#%{}^~`]/g, "")
-    .replace(/\s+/g, " ")
-    .replace(/^[.\s]+|[.\s]+$/g, "")
-    .trim();
-  return cleaned.slice(0, 60) || fallback;
-}
-
-function uniqueFolderName(title: string, index: number, taken: Set<string>): string {
-  const base = sanitizeSegment(title, `Chapter ${index + 1}`);
-  let candidate = base;
-  let suffix = 2;
-  while (taken.has(candidate.toLowerCase())) {
-    candidate = `${base} (${suffix})`;
-    suffix += 1;
-  }
-  taken.add(candidate.toLowerCase());
-  return candidate;
-}
-
-function chunkFileName(index: number): string {
-  return `chunk-${String(index + 1).padStart(3, "0")}.md`;
-}
-
-function buildFiles(
-  sections: PdfSection[],
-  pageTexts: string[],
-  stamp: number
-): { files: VirtualFile[]; chapters: PdfChapter[] } {
-  const files: VirtualFile[] = [];
-  const chapters: PdfChapter[] = [];
-  const takenFolderNames = new Set<string>();
-
-  sections.forEach((section, sectionIndex) => {
-    const text = pageTexts
-      .slice(section.startPageIndex, section.endPageIndex + 1)
-      .join("\n\n");
-    const chunks = chunkText(text);
-
-    // Chapters without any extractable text (image-only pages) have nothing to
-    // index, so they should not show up as empty folders.
-    if (chunks.length === 0) return;
-
-    const folder = uniqueFolderName(section.title, sectionIndex, takenFolderNames);
-
-    chunks.forEach((chunk, chunkIndex) => {
-      files.push({
-        id: `pdf-${stamp}-${sectionIndex}-${chunkIndex}`,
-        name: chunkFileName(chunkIndex),
-        path: `${folder}/${chunkFileName(chunkIndex)}`,
-        content: chunk,
-        language: "markdown",
-        size: chunk.length,
-        updatedAt: "Just now",
-      });
-    });
-
-    chapters.push({
-      title: section.title,
-      startPage: section.startPageIndex + 1,
-      endPage: section.endPageIndex + 1,
-      chunkCount: chunks.length,
-    });
-  });
-
-  return { files, chapters };
-}
-
-/* -------------------------------------------------------------------------- */
 /*  Entry point                                                               */
 /* -------------------------------------------------------------------------- */
 
-export async function importPdf(
+/**
+ * Reads a PDF and returns its chapters with the text of every page.
+ *
+ * The outline of the document decides the chapters; a document without one
+ * becomes a single section covering the whole file.
+ */
+export async function extractPdf(
   file: File,
-  onProgress?: (progress: PdfImportProgress) => void
-): Promise<PdfImportResult> {
-  const report = (stage: PdfImportStage, percent: number, message: string) =>
-    onProgress?.({ stage, percent, message });
+  onProgress?: (message: string, percent: number) => void
+): Promise<ExtractedPdf> {
+  const report = (message: string, percent: number) =>
+    onProgress?.(message, percent);
 
-  report("loading", 2, `Reading ${file.name}`);
+  report(`Reading ${file.name}`, 2);
 
   const pdfjs = await loadPdfjs();
   const data = new Uint8Array(await file.arrayBuffer());
@@ -410,7 +347,7 @@ export async function importPdf(
   try {
     const pageCount = doc.numPages;
 
-    report("loading", 5, `Opened ${pluralize(pageCount, "page")}`);
+    report(`Opened ${pageCount} page${pageCount === 1 ? "" : "s"}`, 5);
 
     const pageTexts: string[] = [];
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
@@ -420,14 +357,13 @@ export async function importPdf(
       page.cleanup();
 
       report(
-        "extracting",
-        5 + Math.round((pageNumber / pageCount) * 75),
-        `Extracting text - page ${pageNumber} of ${pageCount}`
+        `Extracting text - page ${pageNumber} of ${pageCount}`,
+        5 + Math.round((pageNumber / pageCount) * 75)
       );
       await yieldToBrowser();
     }
 
-    report("structuring", 84, "Reading document outline");
+    report("Reading document outline", 84);
 
     const outline = await doc.getOutline().catch(() => null);
     const entries: OutlineEntry[] = [];
@@ -446,19 +382,32 @@ export async function importPdf(
       fallbackTitle
     );
 
-    report(
-      "chunking",
-      92,
-      `Chunking ${pluralize(sections.length, "chapter")}`
-    );
+    report(`Splitting into ${sections.length} chapters`, 92);
 
-    const { files, chapters } = buildFiles(sections, pageTexts, Date.now());
+    const extracted: PdfSection[] = sections.map((section) => ({
+      title: section.title,
+      startPage: section.startPageIndex + 1,
+      endPage: section.endPageIndex + 1,
+      text: pageTexts
+        .slice(section.startPageIndex, section.endPageIndex + 1)
+        .join("\n\n"),
+    }));
+
     await yieldToBrowser();
+    report("Done", 100);
 
-    report("chunking", 100, `Created ${pluralize(files.length, "chunk")}`);
-
-    return { fileName: file.name, pageCount, chapters, files, usedOutline };
+    return { fileName: file.name, pageCount, sections: extracted, usedOutline };
   } finally {
     await loadingTask.destroy();
   }
+}
+
+function sanitizeSegment(value: string, fallback: string): string {
+  const cleaned = value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\[\]\\/:*?"<>|#%{}^~`]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .trim();
+  return cleaned.slice(0, 60) || fallback;
 }
