@@ -16,7 +16,7 @@ const render = (source: string) =>
     .use(remarkParse)
     .use(remarkMath)
     .use(remarkRehype)
-    .use(rehypeKatex, { throwOnError: false })
+    .use(rehypeKatex)
     .use(rehypeStringify)
     .processSync(
       normalizeLatexDelimiters(normalizeCitations(source))
