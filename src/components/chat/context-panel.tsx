@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -43,6 +42,7 @@ export function ContextPanel({
   onChange,
   lastRetrieved,
   onHighlight,
+  className,
 }: {
   chunks: Chunk[];
   selection: ContextSelection;
@@ -50,6 +50,7 @@ export function ContextPanel({
   /** The chunk ids used in the last answer. */
   lastRetrieved?: string[];
   onHighlight?: (chunkId: string) => void;
+  className?: string;
 }) {
   const [tab, setTab] = React.useState<"sources" | "used">("sources");
   const [search, setSearch] = React.useState("");
@@ -89,9 +90,41 @@ export function ContextPanel({
   const excludedCount = selection.excluded.size;
 
   return (
-    <aside className="flex h-full w-full flex-col border-l border-stone-mist bg-paper-white">
-      <div className="flex items-center justify-between border-b border-stone-mist px-4 py-3">
-        <span className="tag-label text-bark-grey">Context</span>
+    <aside
+      className={cn(
+        "flex h-full w-full flex-col border-l border-stone-mist bg-paper-white",
+        className
+      )}
+    >
+      <div className="flex items-center justify-between px-4 pt-4">
+        <div className="flex items-center gap-1">
+          {(
+            [
+              { id: "sources", label: "Sources", count: chunks.length },
+              { id: "used", label: "Used", count: usedChunks.length },
+            ] as const
+          ).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => setTab(entry.id)}
+              className={cn(
+                "rounded-[7px] px-2 py-1 text-[12px] font-medium transition-colors",
+                tab === entry.id
+                  ? "bg-stone-mist/70 text-charcoal"
+                  : "text-bark-grey hover:text-charcoal"
+              )}
+            >
+              {entry.label}
+              {entry.count > 0 && (
+                <span className="ml-1.5 font-mono text-[10px] text-pebble">
+                  {entry.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {(pinnedCount > 0 || excludedCount > 0) && (
           <Button
             variant="ghost"
@@ -99,6 +132,7 @@ export function ContextPanel({
             onClick={() =>
               onChange({ pinned: new Set(), excluded: new Set() })
             }
+            aria-label="Reset the context"
             className="h-6 gap-1 px-1.5 text-[11px] text-bark-grey hover:text-charcoal"
           >
             <RotateCcwIcon className="size-3" />
@@ -107,43 +141,15 @@ export function ContextPanel({
         )}
       </div>
 
-      <div className="flex gap-1 border-b border-stone-mist px-3 py-2">
-        {(
-          [
-            { id: "sources", label: "Sources", count: chunks.length },
-            { id: "used", label: "Used", count: usedChunks.length },
-          ] as const
-        ).map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => setTab(entry.id)}
-            className={cn(
-              "rounded-[8px] px-2.5 py-1 text-[12px] font-medium transition-colors",
-              tab === entry.id
-                ? "bg-stone-mist/70 text-charcoal"
-                : "text-bark-grey hover:text-charcoal"
-            )}
-          >
-            {entry.label}
-            {entry.count > 0 && (
-              <span className="ml-1.5 font-mono text-[10px] text-pebble">
-                {entry.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {tab === "sources" && (
-        <div className="border-b border-stone-mist px-3 py-2.5">
+        <div className="px-4 pt-3">
           <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-pebble" />
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-pebble" />
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search the passages"
-              className="h-8 rounded-[12px] pl-8 text-[12px]"
+              placeholder="Search passages"
+              className="h-8 rounded-[10px] pl-8 text-[12px]"
             />
           </div>
         </div>
@@ -152,13 +158,13 @@ export function ContextPanel({
       <ScrollArea className="min-h-0 flex-1">
         {tab === "sources" ? (
           filtered.length === 0 ? (
-            <p className="px-4 py-8 text-center text-[13px] text-bark-grey">
+            <p className="px-4 py-10 text-center text-[12px] leading-[1.5] text-bark-grey">
               {chunks.length
                 ? "No passage matches that search."
                 : "This folder has no passages yet."}
             </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-stone-mist">
+            <ul className="flex flex-col px-2 pt-2">
               {filtered.map((chunk) => {
                 const state: ChunkState = selection.pinned.has(chunk.id)
                   ? "pinned"
@@ -167,30 +173,32 @@ export function ContextPanel({
                     : "auto";
 
                 return (
-                  <li key={chunk.id} className="flex flex-col gap-1.5 px-3 py-2.5">
-                    <div className="flex items-center gap-2">
+                  <li
+                    key={chunk.id}
+                    className="group flex flex-col gap-1.5 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-warm-bone"
+                  >
+                    <div className="flex items-center gap-1.5">
                       <FileTextIcon className="size-3 shrink-0 text-pebble" />
                       <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-charcoal">
                         {chunk.section}
                       </span>
                       {state !== "auto" && (
-                        <Badge
-                          variant="outline"
+                        <span
                           className={cn(
-                            "h-4 shrink-0 rounded-[8px] px-1.5 text-[9px] uppercase",
+                            "shrink-0 rounded-[5px] px-1 py-px font-mono text-[9px] uppercase tracking-[0.04em]",
                             state === "pinned"
-                              ? "border-lichen-green/50 text-lichen-green"
-                              : "border-alarm-red/50 text-alarm-red"
+                              ? "bg-lichen-green/10 text-lichen-green"
+                              : "bg-alarm-red/10 text-alarm-red"
                           )}
                         >
                           {state}
-                        </Badge>
+                        </span>
                       )}
                     </div>
 
                     <p
                       className={cn(
-                        "line-clamp-3 text-[12px] leading-[1.43]",
+                        "line-clamp-3 text-[12px] leading-[1.5]",
                         state === "excluded"
                           ? "text-pebble line-through"
                           : "text-bark-grey"
@@ -199,18 +207,21 @@ export function ContextPanel({
                       {chunk.text}
                     </p>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5">
                       <Button
                         variant="ghost"
                         size="xs"
                         onClick={() =>
-                          setState(chunk.id, state === "pinned" ? "auto" : "pinned")
+                          setState(
+                            chunk.id,
+                            state === "pinned" ? "auto" : "pinned"
+                          )
                         }
                         className={cn(
-                          "h-6 gap-1 px-1.5 text-[10px] uppercase",
+                          "h-6 gap-1 px-1.5 font-mono text-[10px] uppercase tracking-[0.04em]",
                           state === "pinned"
                             ? "text-lichen-green"
-                            : "text-bark-grey hover:text-charcoal"
+                            : "text-pebble hover:text-charcoal"
                         )}
                       >
                         <PinIcon className="size-3" />
@@ -226,10 +237,10 @@ export function ContextPanel({
                           )
                         }
                         className={cn(
-                          "h-6 gap-1 px-1.5 text-[10px] uppercase",
+                          "h-6 gap-1 px-1.5 font-mono text-[10px] uppercase tracking-[0.04em]",
                           state === "excluded"
                             ? "text-alarm-red"
-                            : "text-bark-grey hover:text-charcoal"
+                            : "text-pebble hover:text-charcoal"
                         )}
                       >
                         <EyeOffIcon className="size-3" />
@@ -240,7 +251,7 @@ export function ContextPanel({
                           variant="ghost"
                           size="xs"
                           onClick={() => onHighlight(chunk.id)}
-                          className="ml-auto h-6 px-1.5 text-[10px] uppercase text-bark-grey hover:text-charcoal"
+                          className="ml-auto h-6 px-1.5 font-mono text-[10px] uppercase tracking-[0.04em] text-pebble hover:text-charcoal"
                         >
                           View
                         </Button>
@@ -252,15 +263,18 @@ export function ContextPanel({
             </ul>
           )
         ) : usedChunks.length === 0 ? (
-          <p className="px-4 py-8 text-center text-[13px] text-bark-grey">
+          <p className="px-4 py-10 text-center text-[12px] leading-[1.5] text-bark-grey">
             Nothing has been used yet. Ask a question and the passages that
             answered it show up here.
           </p>
         ) : (
-          <ul className="flex flex-col divide-y divide-stone-mist">
+          <ul className="flex flex-col px-2 pt-2">
             {usedChunks.map((chunk, index) => (
-              <li key={chunk.id} className="flex flex-col gap-1.5 px-3 py-2.5">
-                <div className="flex items-center gap-2">
+              <li
+                key={chunk.id}
+                className="flex flex-col gap-1.5 rounded-[10px] px-2 py-2.5 transition-colors hover:bg-warm-bone"
+              >
+                <div className="flex items-center gap-1.5">
                   <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-electric-indigo/10 font-mono text-[10px] text-electric-indigo">
                     {index + 1}
                   </span>
@@ -272,13 +286,13 @@ export function ContextPanel({
                       variant="ghost"
                       size="xs"
                       onClick={() => onHighlight(chunk.id)}
-                      className="h-6 px-1.5 text-[10px] uppercase text-bark-grey hover:text-charcoal"
+                      className="h-6 px-1.5 font-mono text-[10px] uppercase tracking-[0.04em] text-pebble hover:text-charcoal"
                     >
                       View
                     </Button>
                   )}
                 </div>
-                <p className="line-clamp-4 text-[12px] leading-[1.43] text-bark-grey">
+                <p className="line-clamp-4 text-[12px] leading-[1.5] text-bark-grey">
                   {chunk.text}
                 </p>
               </li>
@@ -299,7 +313,7 @@ export function ContextPanel({
         {pinnedCount === 0 && excludedCount === 0 && (
           <span className="flex items-center gap-1 text-pebble">
             <CheckIcon className="size-3" />
-            All passages available
+            All available
           </span>
         )}
       </div>

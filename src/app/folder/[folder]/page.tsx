@@ -2,19 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import {
-  ArrowLeftIcon,
-  ChevronRightIcon,
-  FolderIcon,
-  SparklesIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { PanelRightIcon, SparklesIcon } from "lucide-react";
 
 import {
   ContextPanel,
   type ContextSelection,
 } from "@/components/chat/context-panel";
+import { FolderBar, FolderEmpty } from "@/components/chat/folder-bar";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
@@ -22,23 +17,34 @@ import { TopNav } from "@/components/layout/top-nav";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
-import type { ChatMessage, TraceStep } from "@/lib/library/types";
+import type { ChatMessage, Folder, TraceStep } from "@/lib/library/types";
 import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
 import { pluralize } from "@/lib/utils";
 
 /**
  * The folder workspace.
  *
- * The left is the conversation, the right is the context. The conversation is
- * scoped to one folder: the retriever only ever sees the chunks of that
- * folder and its sub-folders, and the user can pin or exclude passages to
- * steer the answer.
+ * The conversation is scoped to one folder: the retriever only ever sees the
+ * chunks of that folder and its sub-folders, and the user can pin or exclude
+ * passages to steer the answer.
+ *
+ * The page is one column. The context panel is a second column on a wide
+ * screen and a drawer on a narrow one, so the conversation always has the
+ * room it needs.
  */
 export default function FolderPage() {
   const params = useParams<{ folder: string }>();
+  const router = useRouter();
   const library = useLibrary();
   const settings = useSettings();
 
@@ -55,10 +61,12 @@ export default function FolderPage() {
   });
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isContextOpen, setIsContextOpen] = React.useState(false);
   const [lastRetrieved, setLastRetrieved] = React.useState<string[]>([]);
-  const [embedding, setEmbedding] = React.useState<{ state: string; message?: string }>({
-    state: "idle",
-  });
+  const [embedding, setEmbedding] = React.useState<{
+    state: string;
+    message?: string;
+  }>({ state: "idle" });
   const abortRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(
@@ -109,7 +117,13 @@ export default function FolderPage() {
     setMessages((previous) => [
       ...previous,
       userMessage,
-      { id: assistantId, role: "assistant", content: "", trace: [], createdAt: now() },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        trace: [],
+        createdAt: now(),
+      },
     ]);
     setIsBusy(true);
 
@@ -199,7 +213,7 @@ export default function FolderPage() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         <span className="flex size-12 items-center justify-center rounded-[16px] bg-warm-bone text-bark-grey">
-          <TriangleAlertIcon className="size-6" />
+          <FolderIconFallback />
         </span>
         <div className="flex flex-col gap-1.5">
           <h1 className="text-[20px] font-semibold text-charcoal">
@@ -220,98 +234,101 @@ export default function FolderPage() {
   }
 
   const hasContent = chunks.length > 0;
+  const ancestors = collectAncestors(folder, folders);
+
+  const contextPanel = (
+    <ContextPanel
+      chunks={chunks}
+      selection={selection}
+      onChange={setSelection}
+      lastRetrieved={lastRetrieved}
+    />
+  );
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <TopNav
         active="folder"
         hasKey={settings.hasKey}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        middle={
+          <FolderBar
+            folder={folder}
+            ancestors={ancestors}
+            passageCount={chunks.length}
+            messageCount={messages.length}
+            onClearChat={() => setMessages([])}
+            onDelete={() => {
+              void library.removeFolder(folder.id).then(() => router.push("/"));
+            }}
+          />
+        }
+        actions={
+          <Drawer open={isContextOpen} onOpenChange={setIsContextOpen}>
+            <DrawerTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Open the context panel"
+                  className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal lg:hidden"
+                >
+                  <PanelRightIcon className="size-4" />
+                </button>
+              }
+            />
+            <DrawerContent className="w-full sm:max-w-sm">
+              <DrawerTitle className="sr-only">Context</DrawerTitle>
+              <DrawerDescription className="sr-only">
+                The passages the assistant may use
+              </DrawerDescription>
+              {contextPanel}
+            </DrawerContent>
+          </Drawer>
+        }
       />
 
-      {/* The folder header */}
-      <div className="border-b border-stone-mist bg-paper-white">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex items-center gap-1.5 text-[12px] text-bark-grey">
-              <Link
-                href="/"
-                className="flex items-center gap-1 transition-colors hover:text-charcoal"
-              >
-                <ArrowLeftIcon className="size-3" />
-                Library
-              </Link>
-              {folder.path
-                .split("/")
-                .slice(0, -1)
-                .map((part, index) => (
-                  <React.Fragment key={`${part}-${index}`}>
-                    <ChevronRightIcon className="size-3 text-pebble" />
-                    <span>{part}</span>
-                  </React.Fragment>
-                ))}
-            </div>
-            <h1 className="flex items-center gap-2 text-[20px] font-semibold leading-[1.38] text-charcoal">
-              <FolderIcon className="size-4.5 text-electric-indigo" />
-              {folder.name}
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-[11px] text-bark-grey">
-              {pluralize(chunks.length, "passage")} ·{" "}
-              {pluralize(messages.length, "message")}
-            </span>
-            {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setMessages([])}
-                className="h-7 px-2 text-[11px] uppercase text-bark-grey hover:text-charcoal"
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* The workspace */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_320px]">
         <section className="flex min-h-0 flex-col">
           {messages.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-12 text-center">
-              <span className="flex size-12 items-center justify-center rounded-[16px] bg-electric-indigo/10 text-electric-indigo">
-                <SparklesIcon className="size-6" />
-              </span>
-              <div className="flex flex-col gap-2">
-                <h2 className="display-face text-[32px] text-charcoal">
-                  Ask this folder
-                </h2>
-                <p className="max-w-[44ch] text-[14px] leading-[1.43] text-bark-grey">
-                  {hasContent
-                    ? `I have ${pluralize(chunks.length, "passage")} from this folder. Ask anything and I will find the parts that answer it.`
-                    : "This folder is empty. Import a PDF into it from the library and I will have something to read."}
-                </p>
-              </div>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 py-10">
+              {hasContent ? (
+                <>
+                  <span className="flex size-10 items-center justify-center rounded-[12px] bg-electric-indigo/10 text-electric-indigo">
+                    <SparklesIcon className="size-5" />
+                  </span>
+                  <div className="flex flex-col gap-2 text-center">
+                    <h1 className="display-face text-[28px] text-charcoal">
+                      Ask this folder
+                    </h1>
+                    <p className="max-w-[40ch] text-[14px] leading-[1.5] text-bark-grey">
+                      {pluralize(chunks.length, "passage")} loaded. Ask anything
+                      and I will find the parts that answer it.
+                    </p>
+                  </div>
 
-              {hasContent && (
-                <div className="flex max-w-[520px] flex-col gap-2">
-                  {[
-                    "Summarise the main points of this folder",
-                    "What are the key terms and definitions here?",
-                    "Where does this document argue against the consensus?",
-                  ].map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      onClick={() => void handleAsk(suggestion)}
-                      className="rounded-[8px] border border-stone-mist bg-paper-white px-4 py-2.5 text-left text-[13px] text-charcoal transition-colors hover:border-electric-indigo/40 hover:bg-warm-bone"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+                  <div className="flex w-full max-w-[440px] flex-col gap-1.5">
+                    {[
+                      "Summarise the main points of this folder",
+                      "What are the key terms and definitions here?",
+                      "Where does this document argue against the consensus?",
+                    ].map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => void handleAsk(suggestion)}
+                        className="rounded-[10px] border border-stone-mist bg-paper-white px-3.5 py-2.5 text-left text-[13px] text-charcoal transition-colors hover:border-electric-indigo/40 hover:bg-warm-bone"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <FolderEmpty
+                  hasKey={settings.hasKey}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                />
               )}
             </div>
           ) : (
@@ -330,31 +347,10 @@ export default function FolderPage() {
                   ? `Ask about ${folder.name}...`
                   : "This folder has no passages yet"
             }
-          >
-            {!settings.hasKey && (
-              <div className="mx-3 mt-3 flex items-center gap-2 rounded-[8px] border border-terracotta/40 bg-terracotta/5 px-3 py-2 text-[12px] text-bark-grey">
-                <TriangleAlertIcon className="size-3.5 shrink-0 text-terracotta" />
-                Add your Groq API key to chat with this folder.
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="ml-auto font-mono text-[11px] uppercase text-electric-indigo"
-                >
-                  Add key
-                </button>
-              </div>
-            )}
-          </PromptBox>
+          />
         </section>
 
-        <div className="hidden min-h-0 lg:block">
-          <ContextPanel
-            chunks={chunks}
-            selection={selection}
-            onChange={setSelection}
-            lastRetrieved={lastRetrieved}
-          />
-        </div>
+        <div className="hidden min-h-0 lg:block">{contextPanel}</div>
       </div>
 
       {embedding.state === "loading" && (
@@ -372,6 +368,23 @@ export default function FolderPage() {
   );
 }
 
+function FolderIconFallback() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18Z" />
+    </svg>
+  );
+}
+
 /**
  * The folder itself and every folder beneath it.
  */
@@ -384,11 +397,34 @@ function collectFolderIds(
   while (grew) {
     grew = false;
     for (const folder of folders) {
-      if (folder.parentId && ids.has(folder.parentId) && !ids.has(folder.id)) {
+      if (
+        folder.parentId &&
+        ids.has(folder.parentId) &&
+        !ids.has(folder.id)
+      ) {
         ids.add(folder.id);
         grew = true;
       }
     }
   }
   return [...ids];
+}
+
+/**
+ * The folders above this one, root first.
+ */
+function collectAncestors(
+  folder: Folder,
+  folders: Folder[]
+): Folder[] {
+  const byId = new Map(folders.map((entry) => [entry.id, entry]));
+  const ancestors: Folder[] = [];
+
+  let current = folder.parentId ? byId.get(folder.parentId) : undefined;
+  while (current) {
+    ancestors.unshift(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+
+  return ancestors;
 }
