@@ -13,6 +13,7 @@ import { cn } from "cn";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -86,26 +87,28 @@ export function ModeToggle({ className }: { className?: string }) {
         }
       />
       <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.10em] text-pebble">
-          Theme
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {THEMES.map((entry) => {
-          const active = (theme ?? "system") === entry.id;
-          return (
-            <DropdownMenuItem
-              key={entry.id}
-              onClick={() => setTheme(entry.id)}
-              className="justify-between text-[13px]"
-            >
-              <span className="flex items-center gap-2">
-                <entry.icon className="size-3.5" />
-                {entry.name}
-              </span>
-              {active && <CheckIcon className="size-3.5 text-electric-indigo" />}
-            </DropdownMenuItem>
-          );
-        })}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-[10px] uppercase tracking-[0.10em] text-pebble">
+            Theme
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {THEMES.map((entry) => {
+            const active = (theme ?? "system") === entry.id;
+            return (
+              <DropdownMenuItem
+                key={entry.id}
+                onClick={() => setTheme(entry.id)}
+                className="justify-between text-[13px]"
+              >
+                <span className="flex items-center gap-2">
+                  <entry.icon className="size-3.5" />
+                  {entry.name}
+                </span>
+                {active && <CheckIcon className="size-3.5 text-electric-indigo" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
