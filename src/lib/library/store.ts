@@ -147,6 +147,189 @@ export async function deleteChunksByDocument(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Moving                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Rewrites the path of a folder and of every folder beneath it.
+ *
+ * A folder's path is derived from its ancestors, so moving a folder means
+ * re-deriving the paths of its whole subtree.
+ */
+export async function moveFolder(
+  folderId: string,
+  newParentId: string | null
+): Promise<void> {
+  const db = await getDb();
+  const folders = await db.getAll(FOLDER_STORE);
+
+  const folder = folders.find((entry) => entry.id === folderId);
+  if (!folder) return;
+
+  const parent = newParentId
+    ? folders.find((entry) => entry.id === newParentId)
+    : undefined;
+  const parentPath = parent ? parent.path : "";
+
+  // A folder cannot be moved inside itself.
+  if (newParentId === folderId) return;
+  if (newParentId && isDescendant(folders, folderId, newParentId)) return;
+
+  const updated = new Map<string, { name: string; parentId: string | null }>();
+  updated.set(folderId, { name: folder.name, parentId: newParentId ?? null });
+
+  // Every descendant moves with it, keeping the same names and parents.
+  for (const entry of folders) {
+    if (entry.id === folderId) continue;
+    if (isDescendant(folders, folderId, entry.id)) {
+      updated.set(entry.id, { name: entry.name, parentId: entry.parentId });
+    }
+  }
+
+  const byId = new Map(folders.map((entry) => [entry.id, entry]));
+
+  const next = folders.map((entry) => {
+    const change = updated.get(entry.id);
+    if (!change) return entry;
+
+    const parentEntry = change.parentId ? byId.get(change.parentId) : undefined;
+    const basePath = parentEntry ? parentEntry.path : "";
+
+    return {
+      ...entry,
+      name: change.name,
+      parentId: change.parentId,
+      path: basePath ? `${basePath}/${change.name}` : change.name,
+      updatedAt: Date.now(),
+    };
+  });
+
+  const tx = db.transaction(FOLDER_STORE, "readwrite");
+  await Promise.all([...next.map((entry) => tx.store.put(entry)), tx.done]);
+}
+
+/**
+ * Moves a document into a folder.
+ *
+ * The document's own folder and its chapter folders are the ones that hold
+ * its chunks, so the document folder is what actually moves. The document
+ * record and the chapter folders follow it.
+ */
+export async function moveDocument(
+  documentId: string,
+  targetFolderId: string
+): Promise<void> {
+  const db = await getDb();
+  const [folders, documents] = await Promise.all([
+    db.getAll(FOLDER_STORE),
+    db.getAll(DOCUMENT_STORE),
+  ]);
+
+  const document = documents.find((entry) => entry.id === documentId);
+  if (!document) return;
+
+  const target = folders.find((entry) => entry.id === targetFolderId);
+  if (!target) return;
+
+  // The folder that holds the document, and the chapters inside it.
+  const documentFolder = folders.find(
+    (entry) => entry.id === document.folderId
+  );
+  if (!documentFolder) return;
+
+  const chapterFolders = folders.filter(
+    (entry) => entry.parentId === documentFolder.id
+  );
+
+  const updatedFolders = folders.map((entry) => {
+    if (entry.id === documentFolder.id) {
+      return {
+        ...entry,
+        parentId: targetFolderId,
+        path: `${target.path}/${entry.name}`,
+        updatedAt: Date.now(),
+      };
+    }
+    if (chapterFolders.some((chapter) => chapter.id === entry.id)) {
+      return {
+        ...entry,
+        path: `${target.path}/${documentFolder.name}/${entry.name}`,
+        updatedAt: Date.now(),
+      };
+    }
+    return entry;
+  });
+
+  const updatedDocument = {
+    ...document,
+    folderId: targetFolderId,
+    updatedAt: Date.now(),
+  };
+
+  const folderTx = db.transaction(FOLDER_STORE, "readwrite");
+  const documentTx = db.transaction(DOCUMENT_STORE, "readwrite");
+  await Promise.all([
+    ...updatedFolders.map((entry) => folderTx.store.put(entry)),
+    documentTx.store.put(updatedDocument),
+    folderTx.done,
+    documentTx.done,
+  ]);
+}
+
+/**
+ * True when `candidateId` sits somewhere under `ancestorId`.
+ */
+function isDescendant(
+  folders: { id: string; parentId: string | null }[],
+  ancestorId: string,
+  candidateId: string
+): boolean {
+  const byId = new Map(folders.map((entry) => [entry.id, entry]));
+
+  let current = byId.get(candidateId);
+  while (current?.parentId) {
+    if (current.parentId === ancestorId) return true;
+    current = byId.get(current.parentId);
+  }
+
+  return false;
+}
+
+/**
+ * Every folder that sits under `folderId`, and the folder itself.
+ */
+export async function listFolderTree(
+  folderId: string
+): Promise<{ folders: Folder[]; documents: DocumentRecord[] }> {
+  const db = await getDb();
+  const [folders, documents] = await Promise.all([
+    db.getAll(FOLDER_STORE),
+    db.getAll(DOCUMENT_STORE),
+  ]);
+
+  const ids = new Set<string>([folderId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const folder of folders) {
+      if (
+        folder.parentId &&
+        ids.has(folder.parentId) &&
+        !ids.has(folder.id)
+      ) {
+        ids.add(folder.id);
+        grew = true;
+      }
+    }
+  }
+
+  return {
+    folders: folders.filter((folder) => ids.has(folder.id)),
+    documents: documents.filter((document) => ids.has(document.folderId)),
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Whole-library operations                                                  */
 /* -------------------------------------------------------------------------- */
 
