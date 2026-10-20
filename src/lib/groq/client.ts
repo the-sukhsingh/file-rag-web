@@ -52,27 +52,40 @@ export interface GroqModel {
 export function describeModel(id: string): { name: string; note: string } {
   const bare = id.split("/").pop() ?? id;
 
+  // The names Groq uses have their own casing, which is worth keeping.
+  const KNOWN: Record<string, string> = {
+    "gpt-oss-120b": "GPT-OSS 120B",
+    "gpt-oss-20b": "GPT-OSS 20B",
+    "llama-3.3-70b-versatile": "Llama 3.3 70B",
+    "kimi-k2-instruct": "Kimi K2",
+    "qwen3-32b": "Qwen 3 32B",
+  };
+
+  const key = bare.toLowerCase();
+  if (KNOWN[key]) {
+    return { name: KNOWN[key], note: noteFor(key) };
+  }
+
   const name = bare
     .replace(/-instruct$/i, "")
     .replace(/-versatile$/i, "")
     .replace(/-v\d+-\d+-preview$/i, "")
     .split("-")
     .filter(Boolean)
-    .map((part) => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .map((part) =>
+      /^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)
+    )
     .join(" ");
 
-  const note =
-    /gpt-oss-120b/i.test(id)
-      ? "Reasoning"
-      : /gpt-oss-20b/i.test(id)
-        ? "Light"
-        : /versatile/i.test(id)
-          ? "Fast"
-          : /kimi/i.test(id)
-            ? "Long context"
-            : "Chat";
+  return { name: name || bare, note: noteFor(key) };
+}
 
-  return { name: name || bare, note };
+function noteFor(key: string): string {
+  if (key.includes("gpt-oss-120b")) return "Reasoning";
+  if (key.includes("gpt-oss-20b")) return "Light";
+  if (key.includes("versatile")) return "Fast";
+  if (key.includes("kimi")) return "Long context";
+  return "Chat";
 }
 
 /**
