@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeftIcon,
   ChevronRightIcon,
   FileTextIcon,
   FolderIcon,
@@ -16,9 +15,12 @@ import {
   UploadIcon,
 } from "lucide-react";
 
+import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { TopNav } from "@/components/layout/top-nav";
 import { LibraryTree, buildTree } from "@/components/library/library-tree";
 import { MovePicker } from "@/components/library/move-picker";
 import { useLibrary } from "@/components/library/library-provider";
+import { useSettings } from "@/components/library/settings-provider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,10 +65,12 @@ export default function FolderPage() {
   const params = useParams<{ folder: string }>();
   const router = useRouter();
   const library = useLibrary();
+  const settings = useSettings();
 
   const folderId = params?.folder ?? "";
   const folder = library.getFolder(folderId);
 
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [folderToRename, setFolderToRename] = React.useState<Folder | null>(null);
@@ -139,95 +143,100 @@ export default function FolderPage() {
 
   return (
     <div className="min-h-dvh bg-background">
-      {/* The header */}
-      <div className="border-b border-stone-mist bg-paper-white">
-        <div className="mx-auto w-full max-w-[1200px] px-6 py-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <nav className="flex items-center gap-1.5 text-[12px] text-bark-grey">
-                <Link
-                  href="/"
-                  className="flex items-center gap-1 transition-colors hover:text-charcoal"
-                >
-                  <ArrowLeftIcon className="size-3" />
-                  Library
-                </Link>
-                {ancestors.map((ancestor) => (
-                  <React.Fragment key={ancestor.id}>
-                    <ChevronRightIcon className="size-3 text-pebble" />
-                    <span>{ancestor.name}</span>
-                  </React.Fragment>
-                ))}
-              </nav>
-              <h1 className="flex items-center gap-2 text-[24px] font-semibold leading-[1.38] text-charcoal">
-                <FolderIcon className="size-5 text-electric-indigo" />
+      <TopNav
+        active="folder"
+        hasKey={settings.hasKey}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        middle={
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <nav className="flex min-w-0 items-center gap-1.5 text-[13px]">
+              <Link
+                href="/"
+                className="shrink-0 text-bark-grey transition-colors hover:text-charcoal"
+              >
+                Library
+              </Link>
+              {ancestors.map((ancestor) => (
+                <React.Fragment key={ancestor.id}>
+                  <ChevronRightIcon className="size-3 shrink-0 text-pebble" />
+                  <span className="truncate text-bark-grey">{ancestor.name}</span>
+                </React.Fragment>
+              ))}
+              <ChevronRightIcon className="size-3 shrink-0 text-pebble" />
+              <span className="flex shrink-0 items-center gap-1.5 font-semibold text-charcoal">
+                <FolderIcon className="size-3.5 text-electric-indigo" />
                 {folder.name}
-              </h1>
-              <p className="font-mono text-[11px] text-bark-grey">
-                {pluralize(documents.length, "document")} ·{" "}
-                {pluralize(passageCount, "passage")}
-              </p>
-            </div>
+              </span>
+            </nav>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsNewFolderOpen(true)}
-                className="h-9 rounded-[8px] border-stone-mist px-3.5 text-[13px] font-semibold uppercase tracking-[0.04em] text-charcoal hover:border-charcoal"
-              >
-                <FolderPlusIcon className="size-3.5" />
-                Sub-folder
-              </Button>
-
-              <Button
-                onClick={() => router.push(`/folder/${folder.id}/chat`)}
-                disabled={!canChat}
-                className="h-9 rounded-[8px] bg-electric-indigo px-3.5 text-[13px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet disabled:opacity-50"
-              >
-                <MessageSquareIcon className="size-3.5" />
-                Ask
-              </Button>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`Actions for ${folder.name}`}
-                      className="flex size-9 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal"
-                    >
-                      <MoreHorizontalIcon className="size-4" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem onClick={() => setFolderToMove(folder)}>
-                    <FolderIcon className="mr-2 size-3.5" />
-                    Move folder
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setFolderToRename(folder);
-                      setRenameValue(folder.name);
-                    }}
-                  >
-                    <PencilIcon className="mr-2 size-3.5" />
-                    Rename
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setFolderToDelete(folder)}
-                  >
-                    <Trash2Icon className="mr-2 size-3.5" />
-                    Delete folder
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            <span className="hidden shrink-0 items-center gap-1.5 font-mono text-[11px] text-pebble sm:flex">
+              <span className="h-3 w-px bg-stone-mist" />
+              {pluralize(documents.length, "document")} ·{" "}
+              {pluralize(passageCount, "passage")}
+            </span>
           </div>
-        </div>
-      </div>
+        }
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setIsNewFolderOpen(true)}
+              className="h-8 gap-1 px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
+            >
+              <FolderPlusIcon className="size-3.5" />
+              Sub-folder
+            </Button>
+
+            <Button
+              size="xs"
+              onClick={() => router.push(`/folder/${folder.id}/chat`)}
+              disabled={!canChat}
+              className="h-8 gap-1 rounded-[8px] bg-electric-indigo px-3 font-mono text-[10px] uppercase tracking-[0.04em] text-white hover:bg-deep-violet disabled:opacity-40"
+            >
+              <MessageSquareIcon className="size-3" />
+              Ask
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${folder.name}`}
+                    className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal"
+                  >
+                    <MoreHorizontalIcon className="size-4" />
+                  </button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => setFolderToMove(folder)}>
+                  <FolderIcon className="mr-2 size-3.5" />
+                  Move folder
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setFolderToRename(folder);
+                    setRenameValue(folder.name);
+                  }}
+                >
+                  <PencilIcon className="mr-2 size-3.5" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setFolderToDelete(folder)}
+                >
+                  <Trash2Icon className="mr-2 size-3.5" />
+                  Delete folder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
       <main className="mx-auto w-full max-w-[1200px] px-6 py-8">
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -663,6 +672,11 @@ export default function FolderPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+      />
     </div>
   );
 }
