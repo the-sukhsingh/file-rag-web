@@ -1,16 +1,34 @@
 import type { Chunk, RetrievedChunk, TraceStep } from "@/lib/library/types";
 import { renderContext, searchChunks } from "@/lib/retrieval/search";
+import {
+  SHELL_INSTRUCTIONS,
+  createWorkspaceShell,
+  type WorkspaceShell,
+} from "@/lib/shell/workspace-shell";
 
-import { complete, stream, type GroqMessage, type GroqOptions } from "./client";
+import {
+  complete,
+  completeWithTools,
+  type GroqMessage,
+  type GroqOptions,
+  type GroqTool,
+} from "./client";
 
 /**
  * The retrieval agent.
  *
+ * The agent has two ways of reaching the library, and it uses both:
+ *
+ *  - The vector search finds passages by meaning, which is how it finds the
+ *    passage that answers a question nobody worded exactly.
+ *  - The shell reaches the same passages as files, which is how it finds an
+ *    exact term, a name, a number, or reads a whole chapter in order.
+ *
  * A question is answered in up to `MAX_ROUNDS` rounds. Each round retrieves
- * passages from the folder and asks the model whether they answer the
- * question; when they do not, the model rewrites the question into a better
- * search query and the next round runs with it. The last round streams the
- * answer, grounded in everything retrieved so far.
+ * passages and asks the model whether they answer the question; when they do
+ * not, the model rewrites the question into a better search query and the
+ * next round runs with it. The last round streams the answer, grounded in
+ * everything retrieved so far.
  *
  * The loop runs in the browser, against the user's own key, so the only
  * network call is to Groq.
@@ -24,6 +42,9 @@ export const MAX_ROUNDS = 3;
  * is enough, which saves a round trip on the common case.
  */
 const CONFIDENT_RETRIEVAL_SCORE = 0.45;
+
+/** How many shell commands the agent may run in one question. */
+const MAX_SHELL_COMMANDS = 4;
 
 const PLANNER_SYSTEM = [
   "You rewrite a user's question into a single search query for a document",
@@ -44,11 +65,14 @@ const ASSESS_SYSTEM = [
 
 const ANSWER_SYSTEM = [
   "You answer questions about a folder of documents using only the retrieved",
-  "passages you are given.",
+  "passages and the files you read with the shell.",
   "",
   "Rules:",
-  "- Use only what the passages say. Never invent facts, numbers or names.",
-  "- Cite the passages you used with their bracketed number, like [1] or [2].",
+  "- Use only what the passages and files say. Never invent facts, numbers or",
+  "  names.",
+  "- Cite every passage you used with its bracketed number, like [1] or [2].",
+  "  Cite only the passages you actually used - a passage you did not use",
+  "  must not be cited.",
   "- If the passages do not answer the question, say so directly and suggest",
   "  what to ask instead.",
   "- If no passage matched at all, say that the folder does not seem to cover",
@@ -57,14 +81,38 @@ const ANSWER_SYSTEM = [
   "- Be concise and specific. Quote the phrases that matter.",
 ].join(" ");
 
+/** The tool the agent uses to reach the passages as files. */
+const SHELL_TOOL: GroqTool = {
+  name: "shell",
+  description: [
+    "Run a shell command over the passages of this folder, which are mounted",
+    "as markdown files. Use grep to find an exact term across every passage,",
+    "ls to list the documents and chapters, and cat to read a passage.",
+    "The working directory is /workspace.",
+  ].join(" "),
+  parameters: {
+    type: "object",
+    properties: {
+      command: {
+        type: "string",
+        description:
+          "The command line to run, for example: grep -rn \"probability\" /workspace",
+      },
+    },
+    required: ["command"],
+  },
+};
+
 export interface AgentRequest {
   question: string;
   folderName: string;
   /** The chunks of the folder being searched. */
   chunks: Chunk[];
+  /** The document names, so the files are mounted under readable names. */
+  documentNames?: Map<string, string>;
   /** Chunk ids the user pinned into the context. */
   pinnedChunkIds?: string[];
-  /** Chunks the user explicitly removed from the context. */
+  /** Chunk ids the user explicitly removed from the context. */
   excludedChunkIds?: string[];
   /** The conversation so far, oldest first. */
   history?: { role: "user" | "assistant"; content: string }[];
@@ -100,6 +148,36 @@ function buildContext(
   folderName: string
 ): { text: string; citations: { chunkId: string; label: string }[] } {
   return renderContext(results, { folderName });
+}
+
+/**
+ * The passages the answer actually leaned on.
+ *
+ * The model cites them as `[1]`, `[2]` and so on, in the order they were
+ * given to it. The answer is scanned for those markers and only the passages
+ * behind them are kept, so the sources row lists what was used rather than
+ * everything that was retrieved.
+ */
+export function extractCitedChunks(
+  answer: string,
+  results: RetrievedChunk[]
+): string[] {
+  const cited = new Set<string>();
+
+  // The markers are `[1]`, but the model sometimes writes `[1, 2]` or `[1][2]`.
+  const pattern = /\[(\d+(?:\s*[,;]\s*\d+)*)\]/g;
+
+  for (const match of answer.matchAll(pattern)) {
+    for (const part of match[1].split(/[,;]/)) {
+      const index = Number.parseInt(part.trim(), 10);
+      if (Number.isNaN(index)) continue;
+
+      const entry = results[index - 1];
+      if (entry) cited.add(entry.chunk.id);
+    }
+  }
+
+  return [...cited];
 }
 
 /**
@@ -200,46 +278,202 @@ export async function runAgent(
     query = assessment.query;
   }
 
-  /* ---- Final: write the answer -------------------------------------- */
+  /* ---- Give the model the shell as well ---------------------------- */
 
-  const answerStep = createStep("answer", "Writing the answer");
-  callbacks.onTrace(answerStep);
+  const shell = await createWorkspaceShell(
+    candidates,
+    request.documentNames ?? new Map()
+  );
 
-  // Nothing matched at all. The model is still asked, with an empty context,
-  // so it can say plainly that the folder does not cover the question rather
-  // than the answer simply stopping.
-  const { text, citations } = accumulated.length
-    ? buildContext(accumulated, request.folderName)
-    : {
-        text: [
-          `Context from the folder "${request.folderName}".`,
-          "No passage in this folder matched the question.",
-        ].join("\n"),
-        citations: [],
-      };
+  const { text: finalText, citations, passages } = await answerWithShell({
+    question: request.question,
+    folderName: request.folderName,
+    accumulated,
+    shell,
+    history: request.history,
+    options,
+    onShell: (command, result) => {
+      callbacks.onTrace(
+        createStep("read", command, {
+          state: result.exitCode === 0 ? "done" : "failed",
+          detail: truncate(result.stdout.trim(), 160),
+          durationMs: result.durationMs,
+          chunkIds: result.chunkIds,
+        })
+      );
+    },
+    onText: callbacks.onText,
+  });
 
-  callbacks.onCitations(citations.map((citation) => citation.chunkId));
+  /* ---- Only the passages the answer used ---------------------------- */
+
+  const usedIds = new Set(extractCitedChunks(finalText, accumulated));
+  const usedCitations = citations.filter((citation) =>
+    usedIds.has(citation.chunkId)
+  );
+
+  callbacks.onCitations(usedCitations.map((citation) => citation.chunkId));
+
+  void passages;
+}
+
+/**
+ * Writes the answer, giving the model the shell to reach for more passages
+ * while it writes.
+ */
+async function answerWithShell({
+  question,
+  folderName,
+  accumulated,
+  shell,
+  history,
+  options,
+  onShell,
+  onText,
+}: {
+  question: string;
+  folderName: string;
+  accumulated: RetrievedChunk[];
+  shell: WorkspaceShell;
+  history?: { role: "user" | "assistant"; content: string }[];
+  options: GroqOptions;
+  onShell: (
+    command: string,
+    result: {
+      exitCode: number;
+      stdout: string;
+      durationMs: number;
+      chunkIds: string[];
+    }
+  ) => void;
+  onText: (delta: string) => void;
+}): Promise<{
+  text: string;
+  citations: { chunkId: string; label: string }[];
+  passages: RetrievedChunk[];
+}> {
+  const { text: context, citations } = buildContext(accumulated, folderName);
 
   const messages: GroqMessage[] = [
-    { role: "system", content: ANSWER_SYSTEM },
-    ...(request.history ?? []).map((entry) => ({
+    {
+      role: "system",
+      content: [ANSWER_SYSTEM, "", SHELL_INSTRUCTIONS].join("\n"),
+    },
+    ...(history ?? []).map((entry) => ({
       role: entry.role,
       content: entry.content,
     })),
-    { role: "user", content: `${text}\n\nQuestion: ${request.question}` },
+    {
+      role: "user",
+      content: `${context}\n\nQuestion: ${question}`,
+    },
   ];
 
-  const started = Date.now();
-  try {
-    await stream(messages, options, callbacks.onText);
-    answerStep.state = "done";
-  } catch (error) {
-    answerStep.state = "failed";
-    callbacks.onTrace(answerStep);
-    throw error;
+  // The model may ask for a command before it writes. Each command is run
+  // and its output handed back, until the model answers.
+  let commandsRun = 0;
+  let toolCalls: GroqMessage["toolCalls"];
+
+  while (commandsRun < MAX_SHELL_COMMANDS) {
+    const reply = await completeWithTools(messages, {
+      ...options,
+      tools: [SHELL_TOOL],
+    });
+
+    if (!reply.toolCalls.length) {
+      // The model has written its answer.
+      onText(reply.content);
+      return { text: reply.content, citations, passages: accumulated };
+    }
+
+    toolCalls = reply.toolCalls;
+    messages.push({
+      role: "assistant",
+      content: reply.content,
+      toolCalls,
+    });
+
+    const results = toolCalls.map((call) => {
+      const command = parseCommand(call.arguments);
+      return { call, command };
+    });
+
+    const outputs: { id: string; content: string }[] = [];
+
+    for (const { call, command } of results) {
+      commandsRun += 1;
+
+      const started = Date.now();
+      const result = await shell.run(command);
+      const durationMs = Date.now() - started;
+
+      // The passages the command touched are noted, so the trace can point at
+      // the ones that were actually read.
+      const chunkIds = chunkIdsForOutput(result.stdout, shell);
+
+      onShell(command, {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        durationMs,
+        chunkIds,
+      });
+
+      outputs.push({
+        id: call.id,
+        content: result.stdout || result.stderr || "(no output)",
+      });
+    }
+
+    messages.push({ role: "assistant", content: "", toolResults: outputs });
   }
-  answerStep.durationMs = Date.now() - started;
-  callbacks.onTrace(answerStep);
+
+  // The model kept asking for commands. It gets the last word now, with
+  // whatever the shell found.
+  const answer = await complete(
+    [
+      ...messages,
+      {
+        role: "user",
+        content:
+          "Answer the question now, using the passages and the command output above. Cite the passages you used.",
+      },
+    ],
+    options
+  );
+
+  onText(answer);
+  return { text: answer, citations, passages: accumulated };
+}
+
+/**
+ * Pulls the command out of the arguments the model produced.
+ */
+function parseCommand(args: string): string {
+  try {
+    const parsed = JSON.parse(args) as { command?: unknown };
+    if (typeof parsed.command === "string") return parsed.command;
+  } catch {
+    // The model produced something that is not JSON; try the raw string.
+  }
+  return String(args).replace(/^["']|["']$/g, "").trim();
+}
+
+/**
+ * The passages a command's output came from.
+ */
+function chunkIdsForOutput(
+  stdout: string,
+  shell: WorkspaceShell
+): string[] {
+  const ids = new Set<string>();
+
+  for (const [path, chunkId] of shell.chunkByPath) {
+    // The file name appears in the output when grep or cat is used.
+    const name = path.split("/").pop();
+    if (name && stdout.includes(name)) ids.add(chunkId);
+  }
+
+  return [...ids];
 }
 
 /**

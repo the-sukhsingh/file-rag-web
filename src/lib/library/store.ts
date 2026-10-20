@@ -1,5 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
+import { createId } from "./import";
+import { tokenize } from "@/lib/retrieval/tokenize";
 import type { Chunk, DocumentRecord, Folder } from "./types";
 
 /**
@@ -394,4 +396,93 @@ export async function updateChunkEmbedding(
   const chunk = await db.get(CHUNK_STORE, chunkId);
   if (!chunk) return;
   await db.put(CHUNK_STORE, { ...chunk, embedding });
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Editing passages                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Rewrites a passage and re-indexes its tokens.
+ *
+ * The vector is dropped rather than kept: the text has changed, so the old
+ * embedding no longer describes it. The caller re-embeds it.
+ */
+export async function updateChunkText(
+  chunkId: string,
+  text: string
+): Promise<Chunk | null> {
+  const db = await getDb();
+  const chunk = await db.get(CHUNK_STORE, chunkId);
+  if (!chunk) return null;
+
+  const updated: Chunk = {
+    ...chunk,
+    text,
+    tokens: tokenize(text),
+    embedding: null,
+    updatedAt: Date.now(),
+  };
+
+  await db.put(CHUNK_STORE, updated);
+  return updated;
+}
+
+/**
+ * Writes a new passage into a chapter folder.
+ */
+export async function createChunk(input: {
+  documentId: string;
+  folderId: string;
+  section: string;
+  text: string;
+  index: number;
+  startPage?: number;
+  endPage?: number;
+}): Promise<Chunk> {
+  const db = await getDb();
+
+  const chunk: Chunk = {
+    id: createId("chunk"),
+    documentId: input.documentId,
+    folderId: input.folderId,
+    section: input.section,
+    index: input.index,
+    startPage: input.startPage,
+    endPage: input.endPage,
+    text: input.text,
+    embedding: null,
+    tokens: tokenize(input.text),
+    createdAt: Date.now(),
+  };
+
+  await db.put(CHUNK_STORE, chunk);
+  return chunk;
+}
+
+/** Removes a single passage. */
+export async function deleteChunk(chunkId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(CHUNK_STORE, chunkId);
+}
+
+/**
+ * Moves a passage into another chapter folder.
+ */
+export async function moveChunk(
+  chunkId: string,
+  targetFolderId: string
+): Promise<Chunk | null> {
+  const db = await getDb();
+  const chunk = await db.get(CHUNK_STORE, chunkId);
+  if (!chunk) return null;
+
+  const updated: Chunk = {
+    ...chunk,
+    folderId: targetFolderId,
+    updatedAt: Date.now(),
+  };
+
+  await db.put(CHUNK_STORE, updated);
+  return updated;
 }

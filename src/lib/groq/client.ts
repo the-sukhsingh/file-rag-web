@@ -121,6 +121,25 @@ export async function listModels(apiKey: string): Promise<GroqModel[]> {
 export interface GroqMessage {
   role: "system" | "user" | "assistant";
   content: string;
+  /** A tool call the model asked for. */
+  toolCalls?: GroqToolCall[];
+  /** The results of the tool calls, keyed by the call's id. */
+  toolResults?: { id: string; content: string }[];
+}
+
+export interface GroqToolCall {
+  id: string;
+  name: string;
+  /** The raw JSON the model produced for the arguments. */
+  arguments: string;
+}
+
+/** A tool the model can call. */
+export interface GroqTool {
+  name: string;
+  description: string;
+  /** The JSON schema of the arguments. */
+  parameters: Record<string, unknown>;
 }
 
 export interface GroqOptions {
@@ -129,6 +148,8 @@ export interface GroqOptions {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  /** The tools the model may call. */
+  tools?: GroqTool[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -207,6 +228,50 @@ export async function complete(
 }
 
 /**
+ * One completion that may ask for a tool.
+ *
+ * The model either writes an answer or asks for a shell command. Both come
+ * back here so the caller can decide what to do next.
+ */
+export async function completeWithTools(
+  messages: GroqMessage[],
+  options: GroqOptions
+): Promise<{ content: string; toolCalls: GroqToolCall[] }> {
+  const response = await request(messages, options, false);
+  const payload = (await response.json()) as {
+    choices?: {
+      message?: {
+        content?: string | null;
+        tool_calls?: {
+          id?: string;
+          function?: { name?: string; arguments?: string };
+        }[];
+      };
+    }[];
+    error?: { message?: string };
+  };
+
+  if (payload.error?.message) {
+    throw new GroqError(payload.error.message, response.status);
+  }
+
+  const message = payload.choices?.[0]?.message;
+
+  const toolCalls: GroqToolCall[] = (message?.tool_calls ?? [])
+    .filter((call) => call.function?.name)
+    .map((call, index) => ({
+      id: call.id ?? `call-${index}`,
+      name: call.function!.name!,
+      arguments: call.function?.arguments ?? "{}",
+    }));
+
+  return {
+    content: message?.content ?? "",
+    toolCalls,
+  };
+}
+
+/**
  * A streaming completion. `onDelta` is called with each piece of text as it
  * arrives, so the answer can be shown while it is being written.
  */
@@ -268,6 +333,33 @@ async function request(
     throw new GroqError("Add your Groq API key to start asking questions.");
   }
 
+  // The wire format is a little different from the internal one: a tool call
+  // and its result are separate messages, and the arguments travel as a JSON
+  // string.
+  const wire = messages.map((message) => {
+    if (message.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: message.content || null,
+        tool_calls: message.toolCalls.map((call) => ({
+          id: call.id,
+          type: "function",
+          function: { name: call.name, arguments: call.arguments },
+        })),
+      };
+    }
+
+    if (message.toolResults?.length) {
+      return message.toolResults.map((result) => ({
+        role: "tool",
+        tool_call_id: result.id,
+        content: result.content,
+      }));
+    }
+
+    return { role: message.role, content: message.content };
+  });
+
   let response: Response;
   try {
     response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
@@ -278,10 +370,23 @@ async function request(
       },
       body: JSON.stringify({
         model: options.model ?? DEFAULT_MODEL,
-        messages,
+        messages: wire,
         stream: streaming,
         temperature: options.temperature ?? 0.2,
         max_tokens: options.maxTokens ?? 2048,
+        ...(options.tools?.length
+          ? {
+              tools: options.tools.map((tool) => ({
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.parameters,
+                },
+              })),
+              tool_choice: "auto",
+            }
+          : {}),
       }),
       signal: options.signal,
     });

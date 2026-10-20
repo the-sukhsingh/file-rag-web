@@ -58,6 +58,7 @@ export interface Chunk {
   /** Tokens of the chunk, lowercased. Kept so BM25 needs no re-tokenising. */
   tokens: string[];
   createdAt: number;
+  updatedAt?: number;
 }
 
 /** The whole library, as stored in IndexedDB. */
