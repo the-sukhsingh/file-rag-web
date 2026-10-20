@@ -420,6 +420,13 @@ export default function LibraryDashboard() {
         </div>
       )}
 
+      {library.indexing && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[13px] text-charcoal shadow-xl">
+          <Spinner className="size-3.5 text-electric-indigo" />
+          Indexing {library.indexing.done} of {library.indexing.total} passages
+        </div>
+      )}
+
       {embedding.state === "loading" && (
         <div className="fixed bottom-6 right-6 z-50 flex max-w-xs items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
           <Spinner className="size-3.5 text-electric-indigo" />

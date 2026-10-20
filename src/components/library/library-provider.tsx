@@ -18,6 +18,7 @@ import {
   putFolder,
 } from "@/lib/library/store";
 import type { Chunk, DocumentRecord, Folder } from "@/lib/library/types";
+import { indexChunks } from "@/lib/retrieval/index";
 
 /**
  * The library, in React.
@@ -45,6 +46,8 @@ interface LibraryContextValue {
   removeDocument: (documentId: string) => Promise<void>;
   loadChunks: (folderId: string) => Promise<Chunk[]>;
   clearAll: () => Promise<void>;
+  /** How the background embedding job is going, if one is running. */
+  indexing: { done: number; total: number } | null;
   getFolder: (folderId: string) => Folder | undefined;
   getDocument: (documentId: string) => DocumentRecord | undefined;
   childFolders: (parentId: string | null) => Folder[];
@@ -71,6 +74,10 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [folders, setFolders] = React.useState<Folder[]>([]);
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
   const [ready, setReady] = React.useState(false);
+  const [indexing, setIndexing] = React.useState<{
+    done: number;
+    total: number;
+  } | null>(null);
   const chunkCache = React.useRef(new Map<string, Chunk[]>());
 
   const refresh = React.useCallback(async () => {
@@ -165,6 +172,22 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       const result = await importPdfIntoFolder(file, parentId, onProgress);
       chunkCache.current.clear();
       await refresh();
+
+      // The vectors are filled in after the import is done, so the document
+      // is usable straight away with lexical search while the embedding model
+      // catches up.
+      setIndexing({ done: 0, total: result.chunks.length });
+      void indexChunks(result.chunks, (progress) =>
+        setIndexing({ done: progress.done, total: progress.total })
+      )
+        .catch((error) => {
+          console.warn("Embedding the document failed:", error);
+        })
+        .finally(() => {
+          setIndexing(null);
+          chunkCache.current.clear();
+        });
+
       return result;
     },
     [refresh]
@@ -211,6 +234,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       removeDocument: removeDocumentById,
       loadChunks,
       clearAll,
+      indexing,
       getFolder: (folderId) => folders.find((folder) => folder.id === folderId),
       getDocument: (documentId) =>
         documents.find((document) => document.id === documentId),
@@ -248,6 +272,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       removeDocumentById,
       loadChunks,
       clearAll,
+      indexing,
     ]
   );
 
