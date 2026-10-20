@@ -51,6 +51,8 @@ const ANSWER_SYSTEM = [
   "- Cite the passages you used with their bracketed number, like [1] or [2].",
   "- If the passages do not answer the question, say so directly and suggest",
   "  what to ask instead.",
+  "- If no passage matched at all, say that the folder does not seem to cover",
+  "  the question, and name what it does cover.",
   "- Answer in the language of the question.",
   "- Be concise and specific. Quote the phrases that matter.",
 ].join(" ");
@@ -201,7 +203,19 @@ export async function runAgent(
   const answerStep = createStep("answer", "Writing the answer");
   callbacks.onTrace(answerStep);
 
-  const { text, citations } = buildContext(accumulated, request.folderName);
+  // Nothing matched at all. The model is still asked, with an empty context,
+  // so it can say plainly that the folder does not cover the question rather
+  // than the answer simply stopping.
+  const { text, citations } = accumulated.length
+    ? buildContext(accumulated, request.folderName)
+    : {
+        text: [
+          `Context from the folder "${request.folderName}".`,
+          "No passage in this folder matched the question.",
+        ].join("\n"),
+        citations: [],
+      };
+
   callbacks.onCitations(citations.map((citation) => citation.chunkId));
 
   const messages: GroqMessage[] = [

@@ -164,6 +164,30 @@ export async function embedText(text: string): Promise<number[] | null> {
   return result ? result[0] ?? null : null;
 }
 
+/**
+ * Embeds a single text, but only if the model is already loaded.
+ *
+ * A question must never wait on a model download. If the vectors are not
+ * ready yet, the retriever falls back to BM25 and the answer is still correct
+ * - it just matches on words rather than on meaning.
+ */
+export async function embedTextIfReady(text: string): Promise<number[] | null> {
+  if (!cachedExtractor) return null;
+
+  try {
+    const output = await cachedExtractor(text, {
+      pooling: "mean",
+      normalize: true,
+    });
+    const width = output.dims[output.dims.length - 1];
+    const row: number[] = new Array(width);
+    for (let i = 0; i < width; i += 1) row[i] = output.data[i];
+    return row;
+  } catch {
+    return null;
+  }
+}
+
 /** Cosine similarity of two normalized vectors. */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;

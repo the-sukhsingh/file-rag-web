@@ -1,6 +1,6 @@
 import type { Chunk, RetrievedChunk } from "@/lib/library/types";
 
-import { cosineSimilarity, embedText } from "./embeddings";
+import { cosineSimilarity, embedTextIfReady } from "./embeddings";
 import { stem, tokenize } from "./tokenize";
 
 /**
@@ -155,7 +155,10 @@ export async function searchChunks(
   let usedSemantic = false;
 
   if (!options.lexicalOnly && query.trim()) {
-    const queryVector = await embedText(query);
+    // The model is only used when it is already loaded. A question never
+    // waits for a download; the search simply runs lexically until the
+    // vectors are there.
+    const queryVector = await embedTextIfReady(query);
     if (queryVector) {
       usedSemantic = true;
       semantic = chunks.map((chunk) =>
@@ -188,11 +191,19 @@ export async function searchChunks(
   });
 
   // A chunk is only interesting if one of the scorers actually matched it.
-  const relevant = scored.filter((entry) => {
+  let relevant = scored.filter((entry) => {
     const lexicalHit = (entry.lexical ?? 0) >= LEXICAL_FLOOR;
     const semanticHit = (entry.semantic ?? 0) >= SEMANTIC_FLOOR;
     return lexicalHit || semanticHit;
   });
+
+  // Nothing cleared the bar, but something did match. The model is better
+  // placed than a threshold to say "this passage is not about your question",
+  // so the weakest matches are still passed on rather than dropped.
+  if (!relevant.length) {
+    const weak = scored.filter((entry) => entry.score > 0);
+    relevant = weak.slice(0, Math.min(topK, 3));
+  }
 
   relevant.sort((a, b) => b.score - a.score);
 
