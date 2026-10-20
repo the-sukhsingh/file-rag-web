@@ -187,7 +187,7 @@ export async function deleteFolderTree(folderId: string): Promise<void> {
 
   await Promise.all([
     ...doomedDocuments.map((document) => documentTx.store.delete(document.id)),
-    ...doomedFolders.map((id) => folderTx.store.delete(id)),
+    ...[...doomedFolders].map((id) => folderTx.store.delete(id)),
     chunkTx.done,
     documentTx.done,
     folderTx.done,

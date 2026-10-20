@@ -1,574 +1,560 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
-  SparklesIcon,
+  ArrowRightIcon,
+  BookOpenIcon,
+  FileTextIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  LayersIcon,
+  MessageSquareIcon,
+  SearchIcon,
   Trash2Icon,
-  FileCodeIcon,
-  XIcon,
+  UploadIcon,
 } from "lucide-react";
-
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
 import { cn } from "cn";
+
+import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { TopNav } from "@/components/layout/top-nav";
+import { FolderTree, buildTree } from "@/components/library/folder-tree";
+import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
+import { useLibrary } from "@/components/library/library-provider";
+import { useSettings } from "@/components/library/settings-provider";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-
-import { VirtualFile } from "@/components/file-explorer/types";
-import { FileExplorer } from "@/components/file-explorer/file-explorer";
-import { FileViewer } from "@/components/file-explorer/file-viewer";
-import { ImportPdfDialog } from "@/components/file-explorer/import-pdf-dialog";
-import { PdfImportResult } from "@/lib/pdf";
-import { MessagePattern } from "@/components/ai-elements/message-list";
-import { PromptInputDemo } from "@/components/ai-elements/prompt-input";
-import {
-  loadOrCreateSessionId,
-  type AskStreamEvent,
-  type CommandReport,
-} from "@/lib/chat";
-
-export interface Message {
-  /** Stable across streaming updates, so a message can be patched in place. */
-  id: string;
-  role: "assistant" | "user";
-  content: string;
-  /** Bash commands the server ran against its workspace for this reply. */
-  commands?: CommandReport[];
-}
-
-/** How often streamed deltas are folded into React state. */
-const STREAM_FLUSH_MS = 60;
-
-function newMessageId() {
-  return `msg-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
-}
+import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
+import { pluralize } from "@/lib/utils";
 
 /**
- * Folds the events that arrived since the last flush into the message being
- * streamed: text appends, commands are added as running and completed in place,
- * and a failure is appended to the answer so it is never silently swallowed.
+ * The library dashboard.
+ *
+ * The left column is the tree of folders; the middle column is the folder
+ * that is open; the right column is the model. The dashboard is the home of
+ * the app, and a folder is the unit of knowledge: open one and you can ask
+ * it questions.
  */
-function applyEvents(message: Message, events: AskStreamEvent[]): Message {
-  let content = message.content;
-  let commands = message.commands ?? [];
 
-  for (const event of events) {
-    switch (event.type) {
-      case "text":
-        content += event.delta;
-        break;
-      case "command":
-        commands = [
-          ...commands,
-          {
-            id: event.id,
-            tool: event.tool,
-            command: event.command,
-            stdout: "",
-            stderr: "",
-            exitCode: 0,
-            state: "running",
-          },
-        ];
-        break;
-      case "result":
-        commands = commands.map((command) =>
-          command.id === event.id
-            ? {
-                ...command,
-                stdout: event.stdout,
-                stderr: event.stderr,
-                exitCode: event.exitCode,
-                truncated: event.truncated,
-                state: "done",
-              }
-            : command
-        );
-        break;
-      case "error":
-        content += `${content ? "\n\n" : ""}${event.message}`;
-        break;
-      default:
-        break;
-    }
-  }
+type Status = { kind: "idle" } | { kind: "working" };
 
-  return { ...message, content, commands };
-}
+export default function LibraryDashboard() {
+  const router = useRouter();
+  const library = useLibrary();
+  const settings = useSettings();
 
-export default function Home() {
-  // File System State
-  const [files, setFiles] = React.useState<VirtualFile[]>([]);
-  const [selectedFileId, setSelectedFileId] = React.useState<string | null>(null);
-  const [openFileIds, setOpenFileIds] = React.useState<string[]>([]);
-  const [isImportPdfOpen, setIsImportPdfOpen] = React.useState(false);
+  const [activeFolderId, setActiveFolderId] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isImportOpen, setIsImportOpen] = React.useState(false);
+  const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState("");
+  const [newFolderParent, setNewFolderParent] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<Status>({ kind: "idle" });
+  const [embedding, setEmbedding] = React.useState<
+    { state: string; progress?: number; message?: string }
+  >({ state: "idle" });
 
-  // Chatbot State
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isClearChatOpen, setIsClearChatOpen] = React.useState(false);
-  const [externalPrompt, setExternalPrompt] = React.useState("");
-  const [includeFileContext, setIncludeFileContext] = React.useState(true);
+  React.useEffect(
+    () =>
+      onEmbeddingStatus((next) =>
+        setEmbedding({
+          state: next.state,
+          progress: next.state === "loading" ? next.progress : undefined,
+          message: next.state === "loading" ? next.message : undefined,
+        })
+      ),
+    []
+  );
 
-  // Computed Active File
-  const activeFile = React.useMemo(() => {
-    return files.find((f) => f.id === selectedFileId) ?? null;
-  }, [files, selectedFileId]);
+  const tree = React.useMemo(
+    () => buildTree(library.folders, library.documents),
+    [library.folders, library.documents]
+  );
 
-  const openFiles = React.useMemo(() => {
-    return files.filter((f) => openFileIds.includes(f.id));
-  }, [files, openFileIds]);
+  const activeFolder = activeFolderId
+    ? library.getFolder(activeFolderId)
+    : undefined;
 
-  // Once the reply has any content or a running command, its own UI says more
-  // than a "thinking" chip does.
-  const lastMessage = messages[messages.length - 1];
-  const agentHasStarted =
-    lastMessage?.role === "assistant" &&
-    (lastMessage.content.length > 0 || (lastMessage.commands?.length ?? 0) > 0);
-
-  // File Handlers
-  const handleSelectFile = (file: VirtualFile) => {
-    setSelectedFileId(file.id);
-    if (!openFileIds.includes(file.id)) {
-      setOpenFileIds((prev) => [...prev, file.id]);
-    }
-  };
-
-  const handleCloseFile = (fileId: string) => {
-    const updated = openFileIds.filter((id) => id !== fileId);
-    setOpenFileIds(updated);
-    if (selectedFileId === fileId) {
-      setSelectedFileId(updated.length > 0 ? updated[updated.length - 1] : null);
-    }
-  };
-
-  const handleAddFile = (newFileData: {
-    name: string;
-    path: string;
-    content: string;
-    language: string;
-  }) => {
-    const newFile: VirtualFile = {
-      ...newFileData,
-      id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      updatedAt: "Just now",
-    };
-
-    setFiles((prev) => [...prev, newFile]);
-    setSelectedFileId(newFile.id);
-    setOpenFileIds((prev) => [...prev, newFile.id]);
-  };
-
-  const handleRemoveFile = (fileId: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
-    handleCloseFile(fileId);
-  };
-
-  const handleRenameFile = (fileId: string, newName: string, newPath: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, name: newName, path: newPath } : f))
+  const stats = React.useMemo(() => {
+    const chunks = library.documents.reduce(
+      (total, document) => total + document.chunkCount,
+      0
     );
-  };
-
-  const handleUpdateContent = (fileId: string, content: string) => {
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.id === fileId ? { ...f, content, updatedAt: "Just now" } : f
-      )
+    const pages = library.documents.reduce(
+      (total, document) => total + document.pageCount,
+      0
     );
+    return {
+      folders: library.folders.length,
+      documents: library.documents.length,
+      chunks,
+      pages,
+    };
+  }, [library.folders, library.documents]);
+
+  const handleOpenFolder = (folderId: string) => {
+    setActiveFolderId(folderId);
   };
 
-  const handleImportPdf = (result: PdfImportResult) => {
-    setFiles(result.files);
-    const first = result.files[0] ?? null;
-    setSelectedFileId(first?.id ?? null);
-    setOpenFileIds(first ? [first.id] : []);
+  const handleCreateFolder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newFolderName.trim();
+    if (!name) return;
+
+    const folder = await library.createFolder(name, newFolderParent);
+    setNewFolderName("");
+    setIsNewFolderOpen(false);
+    setActiveFolderId(folder.id);
   };
 
-  // Chat Handlers
-  const sendMessage = async (text: string): Promise<void> => {
-    let promptWithContext = text;
-
-    // Attach active file context if enabled
-    if (includeFileContext && activeFile) {
-      promptWithContext = `[Context File: ${activeFile.path}]\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nQuestion: ${text}`;
-    }
-
-    const assistantId = newMessageId();
-    const history = messages;
-
-    setMessages([
-      ...history,
-      { id: newMessageId(), role: "user", content: text },
-      { id: assistantId, role: "assistant", content: "" },
-    ]);
-    setIsLoading(true);
-
-    // Deltas arrive far faster than the UI needs to repaint, so they are queued
-    // and folded into a single state update every `STREAM_FLUSH_MS`.
-    let queued: AskStreamEvent[] = [];
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flush = () => {
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-      if (!queued.length) return;
-
-      const events = queued;
-      queued = [];
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === assistantId ? applyEvents(message, events) : message
-        )
-      );
-    };
-
-    const enqueue = (event: AskStreamEvent) => {
-      queued.push(event);
-      if (!flushTimer) flushTimer = setTimeout(flush, STREAM_FLUSH_MS);
-    };
-
+  const handleImport = async (
+    file: File,
+    onProgress: (message: string, percent: number) => void
+  ) => {
+    setStatus({ kind: "working" });
     try {
-      const response = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: loadOrCreateSessionId(),
-          // Ship the workspace so the server can mirror it into its own
-          // virtual file system before running bash commands over it.
-          files: files.map(({ path, content }) => ({ path, content })),
-          messages: [
-            ...history.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: promptWithContext },
-          ],
-        }),
-      });
-
-      // Failures thrown before the stream starts come back as JSON with a status.
-      if (!response.ok || !response.body) {
-        const failure = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(
-          failure?.error || `The request failed (${response.status})`
-        );
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Frames are newline-delimited JSON; a chunk can split one in half.
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const frame = line.trim();
-          if (!frame) continue;
-          try {
-            enqueue(JSON.parse(frame) as AskStreamEvent);
-          } catch {
-            // A malformed frame is not worth failing the whole answer over.
-          }
-        }
-      }
-
-      // Flush whatever the decoder still holds (a split multi-byte character)
-      // and pick up a final frame that arrived without its newline.
-      buffer += decoder.decode();
-
-      const trailing = buffer.trim();
-      if (trailing) {
-        try {
-          enqueue(JSON.parse(trailing) as AskStreamEvent);
-        } catch {
-          // Same: ignore the unparsable tail.
-        }
-      }
-    } catch (error) {
-      console.error("Chat Error:", error);
-      const failure =
-        error instanceof Error
-          ? error.message
-          : "Sorry, the connection to the AI assistant failed.";
-
-      setMessages((prev) =>
-        prev.map((message) =>
-          message.id === assistantId
-            ? {
-                ...message,
-                content: message.content
-                  ? `${message.content}\n\n_${failure}_`
-                  : failure,
-              }
-            : message
-        )
+      const result = await library.importPdf(
+        file,
+        activeFolderId ?? null,
+        onProgress
       );
+      setActiveFolderId(result.folders[0].id);
+      return result;
     } finally {
-      flush();
-      setIsLoading(false);
-      setExternalPrompt("");
+      setStatus({ kind: "idle" });
     }
-  };
-
-  const handleAskAboutFile = (file: VirtualFile) => {
-    setIncludeFileContext(true);
-    setExternalPrompt(`Can you explain the structure and functionality of ${file.name}?`);
-  };
-
-  const clearChat = () => {
-    setMessages([]);
-    setIsClearChatOpen(false);
   };
 
   return (
-    <div className="h-dvh w-full overflow-hidden bg-background">
-      <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-        {/* 1. Left Panel: File Explorer */}
-        <ResizablePanel
-          defaultSize="20%"
-          minSize="15%"
-          maxSize="35%"
-          id="panel-explorer"
-        >
-          <FileExplorer
-            files={files}
-            selectedFileId={selectedFileId}
-            onSelectFile={handleSelectFile}
-            onAddFile={handleAddFile}
-            onRemoveFile={handleRemoveFile}
-            onRenameFile={handleRenameFile}
-            onImportPdf={() => setIsImportPdfOpen(true)}
-          />
-        </ResizablePanel>
+    <div className="min-h-dvh bg-background">
+      <TopNav
+        active="library"
+        hasKey={settings.hasKey}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
 
-        <ResizableHandle withHandle />
+      <main className="mx-auto w-full max-w-[1200px] px-6 pb-24">
+        {/* ---- Hero ------------------------------------------------- */}
+        <section className="flex flex-col items-center py-20 text-center">
+          <p className="eyebrow">A private library for your documents</p>
+          <h1 className="display-face mt-6 max-w-[16ch] text-[clamp(40px,7vw,80px)] text-charcoal">
+            Ask your documents <em className="italic text-electric-indigo">anything</em>
+          </h1>
+          <p className="mt-6 max-w-[46ch] text-[18px] leading-[1.56] text-bark-grey">
+            Import a PDF. It is split into chapters and chunks, indexed in your
+            browser, and ready to answer questions - with your own API key.
+          </p>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <Button
+              onClick={() => setIsNewFolderOpen(true)}
+              variant="outline"
+              className="h-11 rounded-[8px] border-stone-mist px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-charcoal hover:border-charcoal"
+            >
+              <FolderPlusIcon className="size-4" />
+              New folder
+            </Button>
+            <Button
+              onClick={() => setIsImportOpen(true)}
+              className="h-11 rounded-[8px] bg-electric-indigo px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+            >
+              <UploadIcon className="size-4" />
+              Import PDF
+            </Button>
+          </div>
+        </section>
 
-        {/* 2. Center Panel: File Content Viewer & Editor */}
-        <ResizablePanel
-          defaultSize="52%"
-          minSize="30%"
-          id="panel-viewer"
-        >
-          <FileViewer
-            activeFile={activeFile}
-            openFiles={openFiles}
-            onSelectFile={handleSelectFile}
-            onCloseFile={handleCloseFile}
-            onUpdateContent={handleUpdateContent}
-            onImportPdf={() => setIsImportPdfOpen(true)}
-            onSendToChat={handleAskAboutFile}
-          />
-        </ResizablePanel>
+        {/* ---- Stats bar -------------------------------------------- */}
+        <section className="grid grid-cols-2 border-y border-stone-mist bg-paper-white md:grid-cols-4">
+          {[
+            { value: stats.folders, label: "Folders" },
+            { value: stats.documents, label: "Documents" },
+            { value: stats.chunks, label: "Chunks indexed" },
+            { value: stats.pages, label: "Pages read" },
+          ].map((stat, index) => (
+            <div
+              key={stat.label}
+              className={cn(
+                "flex flex-col items-center gap-1 px-4 py-6 text-center",
+                index > 0 && "border-l border-stone-mist"
+              )}
+            >
+              <span className="font-numeric text-[24px] leading-[1.33] text-charcoal">
+                {stat.value}
+              </span>
+              <span className="text-[12px] text-bark-grey">{stat.label}</span>
+            </div>
+          ))}
+        </section>
 
-        <ResizableHandle withHandle />
+        {/* ---- The library ------------------------------------------ */}
+        <section className="mt-20 grid gap-6 lg:grid-cols-[300px_1fr]">
+          {/* Tree */}
+          <aside className="flex flex-col rounded-[16px] border border-stone-mist bg-paper-white">
+            <div className="flex items-center justify-between border-b border-stone-mist px-4 py-3">
+              <span className="tag-label text-bark-grey">Library</span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="New folder"
+                onClick={() => {
+                  setNewFolderParent(activeFolderId);
+                  setIsNewFolderOpen(true);
+                }}
+              >
+                <FolderPlusIcon className="size-4" />
+              </Button>
+            </div>
 
-        {/* 3. Right Panel: Chatbot */}
-        <ResizablePanel
-          defaultSize="28%"
-          minSize="20%"
-          maxSize="45%"
-          id="panel-chatbot"
-        >
-          <div className="flex h-full w-full flex-col bg-sidebar border-l border-border select-none">
-            {/* Unified Minimal Chatbot Header */}
-            <div className="flex h-10 items-center justify-between border-b border-border/60 bg-muted/15 px-3 select-none pr-12 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs font-semibold text-foreground shrink-0">
-                  AI Assistant
-                </span>
-
-                {/* Inline Minimal Context Chip */}
-                {activeFile && (
-                  <button
-                    type="button"
-                    onClick={() => setIncludeFileContext(!includeFileContext)}
-                    className={cn(
-                      "flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors border cursor-pointer max-w-40 truncate",
-                      includeFileContext
-                        ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/15"
-                        : "bg-muted/40 text-muted-foreground/60 border-border/40 line-through hover:text-muted-foreground"
-                    )}
-                    title={
-                      includeFileContext
-                        ? "Context attached to prompt. Click to exclude."
-                        : "Click to include file context."
-                    }
-                  >
-                    <FileCodeIcon className="size-3 shrink-0" />
-                    <span className="truncate">{activeFile.name}</span>
-                    {includeFileContext && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className="rounded hover:bg-primary/20 p-0.5 ml-0.5"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIncludeFileContext(false);
-                        }}
-                      >
-                        <XIcon className="size-2.5" />
-                      </span>
-                    )}
-                  </button>
-                )}
-              </div>
-
-              {/* Header Right Actions */}
-              <div className="flex items-center gap-1">
-                {messages.length > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => setIsClearChatOpen(true)}
-                          aria-label="Clear chat"
-                          className="size-7 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2Icon className="size-3.5" />
-                        </Button>
-                      }
-                    />
-                    <TooltipContent>Clear Chat</TooltipContent>
-                  </Tooltip>
-                )}
+            <div className="border-b border-stone-mist px-3 py-2.5">
+              <div className="relative flex items-center">
+                <SearchIcon className="pointer-events-none absolute left-2.5 size-3.5 text-pebble" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Find a folder"
+                  className="h-8 rounded-[12px] pl-8 text-[13px]"
+                />
               </div>
             </div>
 
-            {/* Chat Messages Area */}
-            <div className="flex-1 overflow-hidden flex flex-col relative">
-              {messages.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center p-6 text-center text-muted-foreground">
-                  <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
-                    <SparklesIcon className="size-5" />
-                  </div>
-                  <p className="text-xs font-semibold text-foreground">
-                    Ask About Your Code
+            <div className="min-h-[220px] flex-1 overflow-y-auto p-2">
+              {tree.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                  <span className="flex size-10 items-center justify-center rounded-[12px] bg-warm-bone text-bark-grey">
+                    <FolderIcon className="size-5" />
+                  </span>
+                  <p className="text-[13px] text-bark-grey">
+                    No folders yet. Create one, then import a PDF into it.
                   </p>
-                  <p className="text-[11px] text-muted-foreground mt-1 max-w-xs">
-                    Ask questions, generate functions, or analyze files in your workspace.
-                  </p>
-
-                  {/* Suggested Prompts */}
-                  {activeFile && (
-                    <div className="mt-4 flex flex-col gap-1.5 w-full max-w-xs">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-[11px] h-7 justify-start text-left truncate bg-muted/30"
-                        onClick={() =>
-                          sendMessage(`Explain what ${activeFile.name} does in detail.`)
-                        }
-                      >
-                        Explain {activeFile.name}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-[11px] h-7 justify-start text-left truncate bg-muted/30"
-                        onClick={() =>
-                          sendMessage(`Suggest improvements or refactoring for ${activeFile.name}.`)
-                        }
-                      >
-                        Refactor {activeFile.name}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-[11px] h-7 justify-start text-left truncate bg-muted/30"
-                        onClick={() =>
-                          sendMessage(`Write comprehensive unit tests for ${activeFile.name}.`)
-                        }
-                      >
-                        Generate unit tests
-                      </Button>
-                    </div>
-                  )}
                 </div>
               ) : (
-                <MessagePattern messages={messages} className="flex-1" />
+                <FolderTree
+                  nodes={filterTree(tree, search)}
+                  activeFolderId={activeFolderId ?? undefined}
+                  onOpenFolder={handleOpenFolder}
+                />
               )}
+            </div>
+          </aside>
 
-              {/* Loading Indicator */}
-              {isLoading && !agentHasStarted && (
-                <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted-foreground bg-muted/30 border-t border-border/40 animate-pulse">
-                  <Spinner className="size-3.5 text-primary" />
-                  <span>AI assistant is thinking...</span>
+          {/* The open folder */}
+          <div className="flex flex-col rounded-[16px] border border-stone-mist bg-paper-white">
+            {activeFolder ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-stone-mist px-6 py-5">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <span className="tag-label text-bark-grey">
+                      {activeFolder.path}
+                    </span>
+                    <h2 className="text-[20px] font-semibold leading-[1.38] text-charcoal">
+                      {activeFolder.name}
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsImportOpen(true)}
+                      className="h-9 rounded-[8px] border-stone-mist px-4 text-[13px] font-semibold uppercase tracking-[0.04em] text-charcoal hover:border-charcoal"
+                    >
+                      <UploadIcon className="size-3.5" />
+                      Import
+                    </Button>
+                    <Button
+                      onClick={() => router.push(`/folder/${activeFolder.id}`)}
+                      className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+                    >
+                      <MessageSquareIcon className="size-3.5" />
+                      Chat
+                    </Button>
+                  </div>
                 </div>
+
+                <FolderContents
+                  folderId={activeFolder.id}
+                  onOpenFolder={handleOpenFolder}
+                />
+              </>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-20 text-center">
+                <span className="flex size-12 items-center justify-center rounded-[16px] bg-warm-bone text-bark-grey">
+                  <BookOpenIcon className="size-6" />
+                </span>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[16px] font-semibold text-charcoal">
+                    Pick a folder
+                  </p>
+                  <p className="max-w-[38ch] text-[14px] leading-[1.43] text-bark-grey">
+                    Choose a folder on the left to see what is inside it, or
+                    import a PDF to start a new one.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ---- Feature cards ----------------------------------------- */}
+        <section className="mt-20">
+          <p className="eyebrow text-center">
+            Everything stays on your machine
+          </p>
+          <div className="mt-6 grid gap-6 md:grid-cols-3">
+            {[
+              {
+                title: "Parsed in the browser",
+                body: "PDF.js reads the file on your device and splits it into chapter folders of overlapping chunks.",
+                icon: LayersIcon,
+              },
+              {
+                title: "Hybrid retrieval",
+                body: "BM25 finds the exact terms you typed. A local embedding model finds the passages that mean the right thing.",
+                icon: SearchIcon,
+              },
+              {
+                title: "Your key, your calls",
+                body: "The Groq key is stored on your device and used only to call Groq. There is no server between you and the model.",
+                icon: FileTextIcon,
+              },
+            ].map((feature) => (
+              <article
+                key={feature.title}
+                className="flex flex-col gap-3 rounded-[8px] border border-stone-mist bg-paper-white p-6"
+              >
+                <feature.icon className="size-5 text-electric-indigo" />
+                <h3 className="text-[18px] font-semibold text-charcoal">
+                  {feature.title}
+                </h3>
+                <p className="text-[14px] leading-[1.43] text-bark-grey">
+                  {feature.body}
+                </p>
+                <div className="mt-auto border-t border-stone-mist pt-3">
+                  <span className="tag-label text-charcoal">
+                    Learn more <ArrowRightIcon className="inline size-3" />
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      {/* ---- Dialogs ------------------------------------------------ */}
+      <SettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+      />
+
+      <ImportPdfDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        folderName={activeFolder?.name ?? "the library"}
+        onImport={handleImport}
+      />
+
+      <Dialog open={isNewFolderOpen} onOpenChange={setIsNewFolderOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={handleCreateFolder}>
+            <DialogHeader>
+              <DialogTitle className="font-display text-[24px] font-normal">
+                New folder
+              </DialogTitle>
+              <DialogDescription>
+                A folder holds documents, and is the unit you chat with.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 py-4">
+              <Label htmlFor="folder-name" className="text-[13px] font-medium">
+                Name
+              </Label>
+              <Input
+                id="folder-name"
+                autoFocus
+                required
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                placeholder="e.g. Research papers"
+                className="h-10 rounded-[12px]"
+              />
+              {newFolderParent && (
+                <p className="text-[12px] text-bark-grey">
+                  Inside {library.getFolder(newFolderParent)?.name}
+                </p>
               )}
             </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsNewFolderOpen(false)}
+                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
+              >
+                Create folder
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-            {/* Chat Prompt Input */}
-            <div className="border-t border-border/60 bg-background/80 p-2.5">
-              <PromptInputDemo
-                onSubmitText={sendMessage}
-                externalText={externalPrompt}
-                className="py-0"
-                placeholder={
-                  activeFile && includeFileContext
-                    ? `Ask about ${activeFile.name}...`
-                    : "Ask the agent..."
-                }
-              />
-            </div>
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+      {status.kind === "working" && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[13px] text-charcoal shadow-xl">
+          <Spinner className="size-3.5 text-electric-indigo" />
+          Reading the document
+        </div>
+      )}
 
-      {/* Clear Chat Confirmation Alert Dialog */}
-      <AlertDialog open={isClearChatOpen} onOpenChange={setIsClearChatOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear conversation?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove all current chat messages in this session.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setIsClearChatOpen(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={clearChat}>
-              Clear Chat
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* PDF Import */}
-      <ImportPdfDialog
-        open={isImportPdfOpen}
-        onOpenChange={setIsImportPdfOpen}
-        onImport={handleImportPdf}
-      />
+      {embedding.state === "loading" && (
+        <div className="fixed bottom-6 right-6 z-50 flex max-w-xs items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
+          <Spinner className="size-3.5 text-electric-indigo" />
+          {embedding.message ?? "Preparing the embedding model"}
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * The contents of the open folder: its documents and its sub-folders.
+ */
+function FolderContents({
+  folderId,
+  onOpenFolder,
+}: {
+  folderId: string;
+  onOpenFolder: (folderId: string) => void;
+}) {
+  const library = useLibrary();
+  const documents = library.documentsIn(folderId);
+  const children = library.childFolders(folderId);
+
+  if (!documents.length && !children.length) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+        <span className="flex size-11 items-center justify-center rounded-[12px] bg-warm-bone text-bark-grey">
+          <UploadIcon className="size-5" />
+        </span>
+        <p className="text-[14px] text-bark-grey">
+          This folder is empty. Import a PDF and it will be split into
+          chapters and chunks here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      {children.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <span className="tag-label text-bark-grey">Folders</span>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {children.map((folder) => (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => onOpenFolder(folder.id)}
+                className="flex items-center gap-3 rounded-[12px] border border-stone-mist bg-warm-bone px-4 py-3 text-left transition-colors hover:border-electric-indigo/40 hover:bg-paper-white"
+              >
+                <FolderIcon className="size-4 shrink-0 text-electric-indigo" />
+                <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-charcoal">
+                  {folder.name}
+                </span>
+                <ArrowRightIcon className="size-3.5 shrink-0 text-pebble" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {documents.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <span className="tag-label text-bark-grey">Documents</span>
+          <div className="flex flex-col divide-y divide-stone-mist">
+            {documents.map((document) => {
+              const { documentFolder, chapterFolders } =
+                library.documentLocation(document.id);
+              return (
+                <div
+                  key={document.id}
+                  className="flex items-center gap-4 py-3 first:pt-0 last:pb-0"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-warm-bone text-bark-grey">
+                    <FileTextIcon className="size-4" />
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-[14px] font-medium text-charcoal">
+                      {document.name}
+                    </span>
+                    <span className="truncate font-mono text-[11px] text-bark-grey">
+                      {documentFolder?.path} · {pluralize(document.chunkCount, "chunk")}{" "}
+                      · {pluralize(document.pageCount, "page")} ·{" "}
+                      {pluralize(chapterFolders.length, "chapter")}
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="h-5 shrink-0 rounded-[8px] px-1.5 text-[10px]"
+                  >
+                    Indexed
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Remove ${document.name}`}
+                    onClick={() => void library.removeDocument(document.id)}
+                    className="text-bark-grey hover:text-alarm-red"
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/** Filters the tree by folder name, keeping the parents of a match. */
+function filterTree(
+  nodes: ReturnType<typeof buildTree>,
+  search: string
+): ReturnType<typeof buildTree> {
+  const query = search.trim().toLowerCase();
+  if (!query) return nodes;
+
+  const walk = (
+    list: ReturnType<typeof buildTree>
+  ): ReturnType<typeof buildTree> => {
+    const result: ReturnType<typeof buildTree> = [];
+    for (const node of list) {
+      const children = walk(node.children);
+      if (
+        node.folder.name.toLowerCase().includes(query) ||
+        children.length > 0
+      ) {
+        result.push({ ...node, children });
+      }
+    }
+    return result;
+  };
+
+  return walk(nodes);
 }

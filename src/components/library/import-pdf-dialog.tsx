@@ -122,7 +122,7 @@ export function ImportPdfDialog({
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
-    const file = event.data.files?.[0];
+    const file = event.dataTransfer.files?.[0];
     if (file) void handleImport(file);
   };
 
