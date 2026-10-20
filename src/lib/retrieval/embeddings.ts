@@ -26,7 +26,7 @@ export type EmbeddingStatus =
   | { state: "ready"; model: string; dimensions: number }
   | { state: "unavailable"; reason: string };
 
-export const EMBEDDING_MODEL = "onnx-community/all-MiniLM-L6-v2-ONNX";
+export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
 export const EMBEDDING_DIMENSIONS = 384;
 
 let pipelinePromise: Promise<Extractor> | null = null;
@@ -72,6 +72,8 @@ async function loadExtractor(): Promise<Extractor> {
       env.allowLocalModels = false;
 
       const extractor = (await pipeline("feature-extraction", EMBEDDING_MODEL, {
+        // The quantized weights are a single ~23 MB file, which the browser
+        // caches and never has to fetch again.
         dtype: "q8",
         progress_callback: (info: unknown) => {
           const payload = info as {
