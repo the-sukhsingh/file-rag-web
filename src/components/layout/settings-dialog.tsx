@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { MODELS, verifyApiKey } from "@/lib/groq/client";
+import { MODELS, listModels, verifyApiKey, type GroqModel } from "@/lib/groq/client";
 
 import { useSettings } from "../library/settings-provider";
 
@@ -34,9 +34,26 @@ export function SettingsDialog({
 }) {
   const { apiKey, model, setApiKey, setModel } = useSettings();
   const [draftKey, setDraftKey] = React.useState(apiKey);
+  const [models, setModels] = React.useState<GroqModel[]>([]);
   const [state, setState] = React.useState<
     { kind: "idle" } | { kind: "checking" } | { kind: "ok"; message: string } | { kind: "bad"; message: string }
   >({ kind: "idle" });
+
+  // The models a key can reach depend on its tier, so the list is fetched
+  // from Groq rather than assumed.
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const live = await listModels(draftKey);
+      if (cancelled) return;
+      setModels(live);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftKey]);
 
   // The dialog keeps its own draft of the key, so the saved value is only
   // replaced once Groq has confirmed it. The draft is re-seeded whenever the
@@ -61,6 +78,29 @@ export function SettingsDialog({
       setState({ kind: "bad", message: result.message });
     }
   };
+
+  /**
+   * The models the key can actually reach, with the chosen one kept in the
+   * list even if Groq does not report it, so the selection is never lost.
+   */
+  const availableModels = React.useMemo(() => {
+    const list: GroqModel[] = models.length
+      ? [...models]
+      : MODELS.map((entry) => ({ ...entry }));
+
+    if (!list.some((entry) => entry.id === model)) {
+      const live = models.find((entry) => entry.id === model);
+      list.unshift(
+        live ?? {
+          id: model,
+          name: model.split("/").pop() ?? model,
+          note: "Selected",
+        }
+      );
+    }
+
+    return list;
+  }, [models, model]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -106,7 +146,7 @@ export function SettingsDialog({
               Model
             </Label>
             <div className="flex flex-col gap-1.5">
-              {MODELS.map((entry) => (
+              {availableModels.map((entry) => (
                 <button
                   key={entry.id}
                   type="button"
@@ -132,6 +172,11 @@ export function SettingsDialog({
                 </button>
               ))}
             </div>
+            <p className="text-[12px] text-bark-grey">
+              {models.length
+                ? "The models your key can reach."
+                : "The default models are shown until the key is verified."}
+            </p>
           </div>
         </div>
 

@@ -14,13 +14,96 @@ const MODEL_STORAGE_KEY = "quarry-groq-model";
 /** The model used when the user has not chosen one. */
 export const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
-/** The models offered in the picker, with the reasoning one first. */
+/**
+ * The models offered in the picker.
+ *
+ * Groq's catalogue depends on the key's tier, so this list is only the
+ * fallback. The real list is fetched from the models endpoint and shows
+ * exactly what the key can reach.
+ */
 export const MODELS = [
   { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B", note: "Reasoning" },
   { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B", note: "Fast" },
   { id: "moonshotai/kimi-k2-instruct", name: "Kimi K2", note: "Long context" },
   { id: "openai/gpt-oss-20b", name: "GPT-OSS 20B", note: "Light" },
 ] as const;
+
+/**
+ * The models that cannot answer a chat message: audio transcription and the
+ * safety classifiers.
+ */
+const NOT_CHAT_MODELS = [
+  "whisper",
+  "prompt-guard",
+  "safeguard",
+  "guard",
+];
+
+export interface GroqModel {
+  id: string;
+  name: string;
+  note: string;
+}
+
+/**
+ * Turns a model id into something readable: `moonshotai/kimi-k2-instruct`
+ * becomes `Kimi K2 Instruct`.
+ */
+export function describeModel(id: string): { name: string; note: string } {
+  const bare = id.split("/").pop() ?? id;
+
+  const name = bare
+    .replace(/-instruct$/i, "")
+    .replace(/-versatile$/i, "")
+    .replace(/-v\d+-\d+-preview$/i, "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(" ");
+
+  const note =
+    /gpt-oss-120b/i.test(id)
+      ? "Reasoning"
+      : /gpt-oss-20b/i.test(id)
+        ? "Light"
+        : /versatile/i.test(id)
+          ? "Fast"
+          : /kimi/i.test(id)
+            ? "Long context"
+            : "Chat";
+
+  return { name: name || bare, note };
+}
+
+/**
+ * Lists the models the key can reach.
+ *
+ * A key's tier decides which models it may use, so the list is fetched rather
+ * than assumed. Returns an empty list when the key cannot read it.
+ */
+export async function listModels(apiKey: string): Promise<GroqModel[]> {
+  if (!apiKey.trim()) return [];
+
+  try {
+    const response = await fetch(`${GROQ_BASE_URL}/models`, {
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+    });
+    if (!response.ok) return [];
+
+    const payload = (await response.json()) as { data?: { id?: string }[] };
+    const ids = (payload.data ?? [])
+      .map((entry) => entry.id)
+      .filter((id): id is string => Boolean(id))
+      .filter(
+        (id) =>
+          !NOT_CHAT_MODELS.some((skip) => id.toLowerCase().includes(skip))
+      );
+
+    return ids.map((id) => ({ id, ...describeModel(id) }));
+  } catch {
+    return [];
+  }
+}
 
 export interface GroqMessage {
   role: "system" | "user" | "assistant";
@@ -210,7 +293,12 @@ async function readError(response: Response): Promise<string> {
     };
     const raw = payload.error;
     const message = typeof raw === "string" ? raw : raw?.message;
-    if (message) return message;
+    if (message) {
+      if (/model/i.test(message) && /not found|deprecat|not available/i.test(message)) {
+        return "That model is not available to your key. Pick another one in the settings.";
+      }
+      return message;
+    }
   } catch {
     // Fall through to the status-based message.
   }
