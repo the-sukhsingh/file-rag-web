@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   CheckIcon,
+  ChevronRightIcon,
   CopyIcon,
   FileTextIcon,
   Loader2Icon,
@@ -19,8 +20,9 @@ import type { ChatMessage, TraceStep } from "@/lib/library/types";
 /**
  * The conversation.
  *
- * Assistant messages carry the trace of the agent's work above the answer, so
- * the user can see which passages were read and how the answer was reached.
+ * The assistant's answers are set in the page rather than boxed in a card, so
+ * the thread reads as a document. The trace folds into a single quiet line
+ * above the answer, and only opens when it is clicked.
  */
 
 export function MessageList({
@@ -48,9 +50,9 @@ export function MessageList({
           container.scrollHeight - container.scrollTop - container.clientHeight;
         stickToEnd.current = distanceFromEnd < 64;
       }}
-      className="flex-1 overflow-y-auto px-6 py-6"
+      className="min-h-0 flex-1 overflow-y-auto px-6"
     >
-      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 py-8">
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} onCite={onCite} />
         ))}
@@ -71,7 +73,7 @@ function MessageBubble({
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-[12px] border border-stone-mist bg-warm-bone px-4 py-3 text-[14px] leading-[1.43] text-charcoal">
+        <div className="max-w-[80%] rounded-[12px] bg-stone-mist/70 px-3.5 py-2.5 text-[14px] leading-[1.5] text-charcoal">
           {message.content}
         </div>
       </div>
@@ -79,57 +81,59 @@ function MessageBubble({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       {message.trace && message.trace.length > 0 && (
         <TraceList steps={message.trace} onCite={onCite} />
       )}
 
       {message.content && (
-        <div className="rounded-[12px] border border-stone-mist bg-paper-white px-5 py-4">
-          <div className="prose prose-sm max-w-none break-words text-[14px] leading-[1.6] text-charcoal prose-headings:font-semibold prose-headings:text-charcoal prose-p:my-2 prose-ul:my-2 prose-li:my-1 prose-strong:text-charcoal prose-code:rounded-[6px] prose-code:bg-warm-bone prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-[13px] prose-pre:rounded-[12px] prose-pre:border prose-pre:border-stone-mist prose-pre:bg-warm-bone prose-pre:p-4">
+        <>
+          <div className="prose prose-sm max-w-none break-words text-[14px] leading-[1.65] text-charcoal prose-headings:mt-4 prose-headings:mb-2 prose-headings:text-[16px] prose-headings:font-semibold prose-headings:text-charcoal prose-p:my-2.5 prose-ul:my-2.5 prose-ol:my-2.5 prose-li:my-1 prose-li:pl-1 prose-strong:font-semibold prose-strong:text-charcoal prose-code:rounded-[5px] prose-code:bg-stone-mist/70 prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-[12.5px] prose-code:font-normal prose-pre:rounded-[12px] prose-pre:border prose-pre:border-stone-mist prose-pre:bg-warm-bone prose-pre:p-4 prose-blockquote:border-l-2 prose-blockquote:border-stone-mist prose-blockquote:pl-3 prose-blockquote:text-bark-grey prose-a:text-sapphire-link">
             <Markdown>{message.content}</Markdown>
           </div>
-          {message.citations && message.citations.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-stone-mist pt-3">
-              <span className="tag-label text-[10px] text-pebble">Sources</span>
-              {message.citations.map((chunkId, index) => (
-                <button
-                  key={chunkId}
-                  type="button"
-                  onClick={() => onCite?.(chunkId)}
-                  className="rounded-[8px] border border-stone-mist px-2 py-0.5 font-mono text-[11px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
-                >
-                  [{index + 1}]
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      {message.content && (
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Copy the answer"
-            onClick={() => {
-              navigator.clipboard.writeText(message.content);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="text-bark-grey"
-          >
-            {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-          </Button>
-        </div>
+          <div className="flex items-center gap-1">
+            {message.citations && message.citations.length > 0 && (
+              <div className="mr-1 flex flex-wrap items-center gap-1">
+                {message.citations.map((chunkId, index) => (
+                  <button
+                    key={chunkId}
+                    type="button"
+                    onClick={() => onCite?.(chunkId)}
+                    className="rounded-[6px] border border-stone-mist px-1.5 py-0.5 font-mono text-[10px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Copy the answer"
+              onClick={() => {
+                navigator.clipboard.writeText(message.content);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-pebble hover:text-charcoal"
+            >
+              {copied ? (
+                <CheckIcon className="size-3.5" />
+              ) : (
+                <CopyIcon className="size-3.5" />
+              )}
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 /**
- * The agent's trace, collapsed to one row per step.
+ * The agent's trace, folded into one line that opens on click.
  */
 function TraceList({
   steps,
@@ -138,80 +142,94 @@ function TraceList({
   steps: TraceStep[];
   onCite?: (chunkId: string) => void;
 }) {
-  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [isOpen, setIsOpen] = React.useState(false);
+  const last = steps[steps.length - 1];
+
+  const summary = React.useMemo(() => {
+    const searches = steps.filter((step) => step.kind === "search");
+    const passages = new Set(
+      searches.flatMap((step) => step.chunkIds ?? [])
+    ).size;
+    return `${searches.length} search${searches.length === 1 ? "" : "es"} · ${passages} passage${passages === 1 ? "" : "s"} read`;
+  }, [steps]);
+
+  const isRunning = last?.state === "running";
 
   return (
-    <div className="overflow-hidden rounded-[12px] border border-stone-mist bg-paper-white">
-      {steps.map((step) => {
-        const isOpen = expanded === step.id;
-        const hasDetail = Boolean(step.detail || step.chunkIds?.length);
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        className="group flex w-fit items-center gap-1.5 text-[12px] text-pebble transition-colors hover:text-bark-grey"
+      >
+        {isRunning ? (
+          <Loader2Icon className="size-3 animate-spin text-electric-indigo" />
+        ) : (
+          <SearchIcon className="size-3" />
+        )}
+        <span>{isRunning ? last?.title : summary}</span>
+        <ChevronRightIcon
+          className={cn(
+            "size-3 transition-transform",
+            isOpen && "rotate-90"
+          )}
+        />
+      </button>
 
-        return (
-          <div
-            key={step.id}
-            className="border-b border-stone-mist last:border-b-0"
-          >
-            <button
-              type="button"
-              disabled={!hasDetail}
-              onClick={() => setExpanded(isOpen ? null : step.id)}
-              className={cn(
-                "flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors",
-                hasDetail && "hover:bg-warm-bone"
-              )}
-            >
+      {isOpen && (
+        <div className="flex flex-col gap-1 rounded-[10px] border border-stone-mist bg-paper-white px-3 py-2">
+          {steps.map((step) => (
+            <div key={step.id} className="flex items-center gap-2 py-0.5">
               <StepIcon step={step} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-charcoal">
+              <span className="min-w-0 flex-1 truncate text-[12px] text-bark-grey">
                 {step.title}
               </span>
               {step.durationMs !== undefined && (
-                <span className="shrink-0 font-mono text-[11px] text-pebble">
+                <span className="shrink-0 font-mono text-[10px] text-pebble">
                   {step.durationMs}ms
                 </span>
               )}
-            </button>
+            </div>
+          ))}
 
-            {isOpen && hasDetail && (
-              <div className="flex flex-col gap-2 border-t border-stone-mist bg-warm-bone px-3.5 py-3">
-                {step.detail && (
-                  <p className="text-[12px] text-bark-grey">{step.detail}</p>
-                )}
-                {step.chunkIds && step.chunkIds.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {step.chunkIds.map((chunkId) => (
-                      <button
-                        key={chunkId}
-                        type="button"
-                        onClick={() => onCite?.(chunkId)}
-                        className="flex items-center gap-1 rounded-[8px] border border-stone-mist bg-paper-white px-2 py-0.5 font-mono text-[11px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
-                      >
-                        <FileTextIcon className="size-3" />
-                        {chunkId.slice(-8)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          {steps.some((step) => step.chunkIds?.length) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1 border-t border-stone-mist pt-2">
+              {steps
+                .flatMap((step) => step.chunkIds ?? [])
+                .filter((id, index, all) => all.indexOf(id) === index)
+                .map((chunkId) => (
+                  <button
+                    key={chunkId}
+                    type="button"
+                    onClick={() => onCite?.(chunkId)}
+                    className="flex items-center gap-1 rounded-[6px] border border-stone-mist px-1.5 py-0.5 font-mono text-[10px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
+                  >
+                    <FileTextIcon className="size-2.5" />
+                    {chunkId.slice(-8)}
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function StepIcon({ step }: { step: TraceStep }) {
   if (step.state === "running") {
-    return <Loader2Icon className="size-3.5 shrink-0 animate-spin text-electric-indigo" />;
+    return (
+      <Loader2Icon className="size-3 shrink-0 animate-spin text-electric-indigo" />
+    );
   }
   if (step.state === "failed") {
-    return <TriangleAlertIcon className="size-3.5 shrink-0 text-alarm-red" />;
+    return <TriangleAlertIcon className="size-3 shrink-0 text-alarm-red" />;
   }
   if (step.kind === "search") {
-    return <SearchIcon className="size-3.5 shrink-0 text-bark-grey" />;
+    return <SearchIcon className="size-3 shrink-0 text-pebble" />;
   }
   if (step.kind === "answer") {
-    return <SparklesIcon className="size-3.5 shrink-0 text-electric-indigo" />;
+    return <SparklesIcon className="size-3 shrink-0 text-electric-indigo" />;
   }
-  return <FileTextIcon className="size-3.5 shrink-0 text-bark-grey" />;
+  return <FileTextIcon className="size-3 shrink-0 text-pebble" />;
 }

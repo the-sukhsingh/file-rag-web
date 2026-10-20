@@ -7,16 +7,17 @@ import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 
 /**
- * The prompt box.
+ * The composer.
  *
- * Enter sends, Shift+Enter breaks the line. The box grows with the text up to
- * a ceiling, and then scrolls.
+ * One rounded field with the send button sitting inside it, so the control
+ * that matters is where the eye already is. Enter sends, Shift+Enter breaks
+ * the line, and the field grows with the text up to a ceiling.
  */
 export function PromptBox({
   onSubmit,
   onStop,
   isBusy,
-  placeholder = "Ask a question about this folder",
+  placeholder = "Ask a question",
   disabled,
   children,
 }: {
@@ -25,7 +26,7 @@ export function PromptBox({
   isBusy?: boolean;
   placeholder?: string;
   disabled?: boolean;
-  /** A row of controls above the textarea, such as the context chips. */
+  /** A row of controls above the field, such as the context chips. */
   children?: React.ReactNode;
 }) {
   const [text, setText] = React.useState("");
@@ -40,43 +41,42 @@ export function PromptBox({
   }
 
   return (
-    <div className="border-t border-stone-mist bg-background px-6 py-4">
-      <div className="mx-auto w-full max-w-[760px]">
+    <div className="shrink-0 px-6 pb-6 pt-2">
+      <div className="mx-auto w-full max-w-[720px]">
         <div
           className={cn(
-            "rounded-[12px] border bg-paper-white transition-shadow focus-within:border-electric-indigo focus-within:ring-[3px] focus-within:ring-electric-indigo/15",
-            disabled ? "border-stone-mist opacity-60" : "border-stone-mist"
+            "rounded-[14px] border bg-paper-white transition-all",
+            disabled
+              ? "border-stone-mist"
+              : "border-stone-mist focus-within:border-electric-indigo focus-within:ring-[3px] focus-within:ring-electric-indigo/12"
           )}
         >
           {children}
 
-          <textarea
-            ref={textareaRef}
-            value={text}
-            rows={1}
-            disabled={disabled}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={placeholder}
-            className="field-sizing-content max-h-40 min-h-[52px] w-full resize-none bg-transparent px-4 pb-2 pt-3.5 text-[14px] leading-[1.5] text-charcoal outline-none placeholder:text-pebble disabled:cursor-not-allowed"
-          />
+          <div className="flex items-end gap-2 px-3 py-2.5">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              rows={1}
+              disabled={disabled}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder={placeholder}
+              className="field-sizing-content max-h-40 min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[14px] leading-[1.5] text-charcoal outline-none placeholder:text-pebble disabled:cursor-not-allowed"
+            />
 
-          <div className="flex items-center justify-between px-3 pb-3">
-            <span className="font-mono text-[11px] text-pebble">
-              Enter to send · Shift+Enter for a new line
-            </span>
             {isBusy ? (
               <Button
                 type="button"
                 size="icon-sm"
                 onClick={onStop}
                 aria-label="Stop"
-                className="size-8 rounded-[8px] border border-stone-mist bg-warm-bone text-charcoal hover:bg-stone-mist/60"
+                className="size-8 shrink-0 rounded-[9px] border border-stone-mist bg-warm-bone text-charcoal hover:bg-stone-mist/60"
               >
                 <SquareIcon className="size-3 fill-current" />
               </Button>
@@ -88,7 +88,7 @@ export function PromptBox({
                 disabled={!canSend}
                 aria-label="Send"
                 className={cn(
-                  "size-8 rounded-[8px] transition-colors",
+                  "size-8 shrink-0 rounded-[9px] transition-colors",
                   canSend
                     ? "bg-electric-indigo text-white hover:bg-deep-violet"
                     : "bg-stone-mist/60 text-pebble"
@@ -99,6 +99,10 @@ export function PromptBox({
             )}
           </div>
         </div>
+
+        <p className="mt-2 text-center font-mono text-[10px] text-pebble">
+          {isBusy ? "The assistant is working" : "Enter to send · Shift+Enter for a new line"}
+        </p>
       </div>
     </div>
   );
