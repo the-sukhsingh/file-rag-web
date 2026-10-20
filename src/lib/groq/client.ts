@@ -500,8 +500,15 @@ async function request(
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
+
+    // The real reason is kept: a request that Groq rejected is a different
+    // problem from a request that never left the browser, and the reader
+    // needs to know which one it is.
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error("[groq] request failed:", reason, error);
+
     throw new GroqError(
-      "Could not reach Groq. Check your connection and try again."
+      `Could not reach Groq. Check your connection and try again. (${reason})`
     );
   }
 
