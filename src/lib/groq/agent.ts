@@ -135,6 +135,8 @@ export async function runAgent(
 
   const planStep = createStep("plan", "Reading the question");
   callbacks.onTrace(planStep);
+  planStep.state = "done";
+  callbacks.onTrace(planStep);
 
   let query = request.question;
   let accumulated: RetrievedChunk[] = [];

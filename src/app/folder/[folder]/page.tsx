@@ -358,7 +358,7 @@ export default function FolderPage() {
       </div>
 
       {embedding.state === "loading" && (
-        <div className="fixed bottom-6 right-6 z-50 flex max-w-xs items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
           <Spinner className="size-3.5 text-electric-indigo" />
           {embedding.message ?? "Preparing the embedding model"}
         </div>
