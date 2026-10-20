@@ -314,7 +314,11 @@ export default function FolderPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Drawer open={isContextOpen} onOpenChange={setIsContextOpen}>
+            <Drawer
+              open={isContextOpen}
+              onOpenChange={setIsContextOpen}
+              swipeDirection="right"
+            >
               <DrawerTrigger
                 render={
                   <button
@@ -326,7 +330,7 @@ export default function FolderPage() {
                   </button>
                 }
               />
-              <DrawerContent className="w-full sm:max-w-sm">
+              <DrawerContent className="w-full max-w-[340px]">
                 <DrawerTitle className="sr-only">Context</DrawerTitle>
                 <DrawerDescription className="sr-only">
                   The passages the assistant may use
