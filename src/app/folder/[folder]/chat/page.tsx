@@ -20,6 +20,7 @@ import { FolderEmpty } from "@/components/chat/folder-bar";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { ProgressPopup } from "@/components/layout/progress-popup";
 import { TopNav } from "@/components/layout/top-nav";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
@@ -78,6 +79,7 @@ export default function FolderChatPage() {
   const [embedding, setEmbedding] = React.useState<{
     state: string;
     message?: string;
+    percent?: number;
   }>({ state: "idle" });
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -87,6 +89,7 @@ export default function FolderChatPage() {
         setEmbedding({
           state: next.state,
           message: next.state === "loading" ? next.message : undefined,
+          percent: next.state === "loading" ? next.progress : undefined,
         })
       ),
     []
@@ -427,10 +430,11 @@ export default function FolderChatPage() {
       </div>
 
       {embedding.state === "loading" && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
-          <Spinner className="size-3.5 text-electric-indigo" />
-          {embedding.message ?? "Preparing the embedding model"}
-        </div>
+        <ProgressPopup
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
+          label={embedding.message ?? "Preparing the embedding model"}
+          percent={embedding.percent}
+        />
       )}
 
       <SettingsDialog

@@ -18,6 +18,7 @@ import {
 import { cn } from "cn";
 
 import { SettingsDialog } from "@/components/layout/settings-dialog";
+import { ProgressPopup } from "@/components/layout/progress-popup";
 import { ShowcaseCard } from "@/components/layout/showcase-card";
 import { TopNav } from "@/components/layout/top-nav";
 import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
@@ -53,7 +54,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
 import type { Folder } from "@/lib/library/types";
 import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
 import { pluralize } from "@/lib/utils";
@@ -83,6 +83,7 @@ export default function LibraryDashboard() {
   const [embedding, setEmbedding] = React.useState<{
     state: string;
     message?: string;
+    percent?: number;
   }>({ state: "idle" });
 
   React.useEffect(
@@ -91,6 +92,7 @@ export default function LibraryDashboard() {
         setEmbedding({
           state: next.state,
           message: next.state === "loading" ? next.message : undefined,
+          percent: next.state === "loading" ? next.progress : undefined,
         })
       ),
     []
@@ -711,10 +713,11 @@ export default function LibraryDashboard() {
       </AlertDialog>
 
       {embedding.state === "loading" && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex max-w-xs -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
-          <Spinner className="size-3.5 text-electric-indigo" />
-          {embedding.message ?? "Preparing the embedding model"}
-        </div>
+        <ProgressPopup
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
+          label={embedding.message ?? "Preparing the embedding model"}
+          percent={embedding.percent}
+        />
       )}
     </div>
   );
