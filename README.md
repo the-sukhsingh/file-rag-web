@@ -41,19 +41,47 @@ The palette keeps its meaning in both themes. `text-charcoal` is always the
 main text colour and `bg-paper-white` is always the raised surface, whatever
 the theme - the values behind those names change, the roles do not.
 
+## The folder is an editor
+
+The folder page is three columns, the way a text editor is put together:
+
+```
+┌────────────┬────────────────────────┬──────────────┐
+│  Explorer  │      The passage        │     Chat     │
+│            │                        │              │
+│ documents  │  read it, rewrite it,   │  ask it      │
+│ chapters   │  move it, pin it       │              │
+│ passages   │                        │              │
+└────────────┴────────────────────────┴──────────────┘
+```
+
+Everything happens on one screen. A PDF can be dropped anywhere on the page,
+a passage opened and rewritten, and a question asked without leaving the
+folder. The chat is a panel beside the work, not a separate page.
+
+A passage is the unit of the library, so it is the unit of the screen. It can
+be edited, moved between chapters, pinned, excluded, added and deleted. An
+edit re-embeds the passage, so the search keeps describing what it now says.
+
 ## How a question is answered
 
-1. The question is embedded and run through the same retriever as the
-   documents.
-2. BM25 and cosine similarity are blended into one score, so an exact
-   identifier and a paraphrase both find their passage.
-3. If the best match is weak, the model is asked whether the passages answer
-   the question and, if not, for a better search query. Up to three rounds.
-4. The model writes the answer from the retrieved passages and cites them.
+The agent has two ways of reaching the library, and it uses both.
 
-The search never waits for the embedding model to download. Until the vectors
-are ready, retrieval runs on BM25 alone and the answer is still correct - it
-just matches on words rather than on meaning.
+1. **The vector search** embeds the question and finds the passages that mean
+   the right thing, blended with BM25 over the chunk tokens.
+2. **The shell** reaches the same passages as files, mounted under
+   `/workspace` as one markdown file per passage, so the agent can `grep` an
+   exact term, `ls` the chapters, or `cat` a passage in full.
+
+The shell runs entirely in the browser, in an in-memory filesystem
+(`just-bash`). Nothing is written to disk and nothing leaves the machine.
+
+If the best match is weak, the model is asked whether the passages answer the
+question and, if not, for a better search query. Up to three rounds.
+
+**Only the passages the answer actually used are cited.** The answer is
+scanned for its `[1]`, `[2]` markers and the sources list is filtered down to
+those, so a question that leans on one passage shows one source.
 
 ## The context panel
 
@@ -74,8 +102,7 @@ The library is a tree of folders, and a folder is the unit you chat with.
 
 ```
 /                          the library: a card for every folder
-/folder/<id>               manage a folder: its documents, its sub-folders
-/folder/<id>/chat          ask that folder
+/folder/<id>               the editor: the passages, and the chat beside them
 ```
 
 **A folder** holds documents. It can be renamed, moved, nested under another
@@ -95,16 +122,16 @@ document is what you put in a folder, and that is what you see.
 src/
   app/
     page.tsx                    the library dashboard
-    folder/[folder]/page.tsx    managing a folder
-    folder/[folder]/chat/       asking a folder
+    folder/[folder]/page.tsx    the editor
   components/
-    chat/                       the conversation, the prompt, the context panel
-    layout/                     the nav, the settings, the showcase card
-    library/                    the tree, the providers, the import dialog
+    chat/                       the conversation, the prompt
+    layout/                     the nav, the settings, the progress popup
+    library/                    the explorer, the passage pane, the drop zone
   lib/
     library/                    the model, the IndexedDB store, the importer
     retrieval/                  the tokenizer, the embeddings, the hybrid search
     groq/                       the BYOK client and the retrieval agent
+    shell/                      the in-browser bash over the passages
     pdf.ts                      PDF.js extraction and chunking
 ```
 
