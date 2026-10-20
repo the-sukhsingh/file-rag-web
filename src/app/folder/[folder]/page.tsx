@@ -2,16 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   ArrowLeftIcon,
   ChevronRightIcon,
   FolderIcon,
-  MessageSquareIcon,
   SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react";
-import { cn } from "cn";
 
 import {
   ContextPanel,
@@ -25,6 +23,7 @@ import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import type { ChatMessage, TraceStep } from "@/lib/library/types";
 import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
@@ -40,7 +39,6 @@ import { pluralize } from "@/lib/utils";
  */
 export default function FolderPage() {
   const params = useParams<{ folder: string }>();
-  const router = useRouter();
   const library = useLibrary();
   const settings = useSettings();
 
@@ -75,12 +73,15 @@ export default function FolderPage() {
   );
 
   // Load the passages of this folder and of every folder beneath it.
+  const folders = library.folders;
+  const loadChunks = library.loadChunks;
+
   React.useEffect(() => {
     let cancelled = false;
 
     void (async () => {
-      const ids = collectFolderIds(folderId, library.folders);
-      const groups = await Promise.all(ids.map((id) => library.loadChunks(id)));
+      const ids = collectFolderIds(folderId, folders);
+      const groups = await Promise.all(ids.map((id) => loadChunks(id)));
       if (cancelled) return;
       setChunks(groups.flat());
     })();
@@ -88,7 +89,7 @@ export default function FolderPage() {
     return () => {
       cancelled = true;
     };
-  }, [folderId, library.folders, library.loadChunks]);
+  }, [folderId, folders, loadChunks]);
 
   const handleAsk = async (question: string) => {
     if (!settings.hasKey) {
@@ -97,17 +98,17 @@ export default function FolderPage() {
     }
 
     const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}-user`,
+      id: createMessageId(),
       role: "user",
       content: question,
-      createdAt: Date.now(),
+      createdAt: now(),
     };
-    const assistantId = `msg-${Date.now()}-assistant`;
+    const assistantId = createMessageId();
 
     setMessages((previous) => [
       ...previous,
       userMessage,
-      { id: assistantId, role: "assistant", content: "", trace: [], createdAt: Date.now() },
+      { id: assistantId, role: "assistant", content: "", trace: [], createdAt: now() },
     ]);
     setIsBusy(true);
 

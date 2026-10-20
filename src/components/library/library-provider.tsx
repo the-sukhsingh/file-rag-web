@@ -10,7 +10,6 @@ import {
 } from "@/lib/library/import";
 import {
   clearLibrary,
-  deleteFolder,
   deleteFolderTree,
   listChunksByFolder,
   listDocuments,

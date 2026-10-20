@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
@@ -24,15 +25,15 @@ export function TopNav({
   return (
     <header className="sticky top-0 z-40 w-full bg-background/90 backdrop-blur-sm">
       <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center justify-between px-6">
-        <a href="/" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <span className="flex size-7 items-center justify-center rounded-lg bg-electric-indigo text-[13px] font-semibold text-white">
             Q
           </span>
           <span className="tag-label text-charcoal">Quarry</span>
-        </a>
+        </Link>
 
         <nav className="hidden items-center gap-8 md:flex">
-          <a
+          <Link
             href="/"
             className={cn(
               "text-sm transition-colors",
@@ -42,7 +43,7 @@ export function TopNav({
             )}
           >
             Library
-          </a>
+          </Link>
           <span className="text-sm text-pebble">Docs</span>
           <span className="text-sm text-pebble">Changelog</span>
         </nav>

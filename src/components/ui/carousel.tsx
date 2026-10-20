@@ -67,6 +67,18 @@ function Carousel({
     setCanScrollNext(api.canScrollNext())
   }, [])
 
+  // The carousel is created on the first render, so its starting position has
+  // to be read once it exists. Adjusting the state while rendering - rather
+  // than from an effect - keeps the arrows correct on the very first paint.
+  const [initialisedApi, setInitialisedApi] = React.useState(api)
+  if (api !== initialisedApi) {
+    setInitialisedApi(api)
+    if (api) {
+      setCanScrollPrev(api.canScrollPrev())
+      setCanScrollNext(api.canScrollNext())
+    }
+  }
+
   const scrollPrev = React.useCallback(() => {
     api?.scrollPrev()
   }, [api])
@@ -95,11 +107,11 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 
     return () => {
+      api?.off("reInit", onSelect)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])

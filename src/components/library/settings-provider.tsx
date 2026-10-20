@@ -16,6 +16,9 @@ import {
  * Both live in `localStorage` and are read on the client only, so the key is
  * never part of a server render and never leaves the browser except in the
  * request to Groq.
+ *
+ * The stored values are read through `useSyncExternalStore`, so the first
+ * paint already has them and there is no "loading, then pop" flash.
  */
 
 interface SettingsContextValue {
@@ -38,38 +41,62 @@ export function useSettings(): SettingsContextValue {
   return context;
 }
 
-export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [apiKey, setApiKeyState] = React.useState("");
-  const [model, setModelState] = React.useState(DEFAULT_MODEL);
-  const [ready, setReady] = React.useState(false);
+/** The empty snapshot, used before the browser has been read. */
+const EMPTY_SNAPSHOT = { apiKey: "", model: DEFAULT_MODEL };
 
-  React.useEffect(() => {
-    setApiKeyState(loadApiKey());
-    setModelState(loadModel());
-    setReady(true);
-  }, []);
+let listeners: (() => void)[] = [];
+let snapshot: { apiKey: string; model: string } = EMPTY_SNAPSHOT;
+let loaded = false;
+
+function subscribe(listener: () => void) {
+  listeners.push(listener);
+  return () => {
+    listeners = listeners.filter((entry) => entry !== listener);
+  };
+}
+
+function getSnapshot() {
+  if (!loaded && typeof window !== "undefined") {
+    loaded = true;
+    snapshot = { apiKey: loadApiKey(), model: loadModel() };
+  }
+  return snapshot;
+}
+
+function getServerSnapshot() {
+  return EMPTY_SNAPSHOT;
+}
+
+export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const stored = React.useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot
+  );
 
   const setApiKey = React.useCallback((key: string) => {
     const trimmed = key.trim();
-    setApiKeyState(trimmed);
     saveApiKey(trimmed);
+    snapshot = { ...snapshot, apiKey: trimmed };
+    for (const listener of listeners) listener();
   }, []);
 
   const setModel = React.useCallback((next: string) => {
-    setModelState(next);
     saveModel(next);
+    snapshot = { ...snapshot, model: next };
+    for (const listener of listeners) listener();
   }, []);
 
   const value = React.useMemo<SettingsContextValue>(
     () => ({
-      apiKey,
-      model,
-      ready,
-      hasKey: apiKey.length > 0,
+      apiKey: stored.apiKey,
+      model: stored.model,
+      ready: typeof window !== "undefined",
+      hasKey: stored.apiKey.length > 0,
       setApiKey,
       setModel,
     }),
-    [apiKey, model, ready, setApiKey, setModel]
+    [stored.apiKey, stored.model, setApiKey, setModel]
   );
 
   return (

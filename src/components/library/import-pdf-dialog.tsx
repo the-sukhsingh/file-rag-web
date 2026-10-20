@@ -147,7 +147,8 @@ export function ImportPdfDialog({
           </DialogTitle>
           <DialogDescription>
             Parsed in your browser. Each bookmark becomes a chapter folder
-            holding that chapter&apos;s chunks.
+            holding that chapter&apos;s chunks, inside{" "}
+            <span className="font-medium text-charcoal">{folderName}</span>.
           </DialogDescription>
         </DialogHeader>
 

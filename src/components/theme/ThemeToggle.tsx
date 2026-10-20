@@ -30,7 +30,7 @@ export function ModeToggle({className=""}:{className?:string}) {
     return (
         <button
             aria-label="Toggle theme"
-            aria-description="Toggle light & dark"
+            title="Toggle light & dark"
             onClick={handleThemeToggle}
             className={cn("rounded-md size-8 flex justify-center items-center aspect-square h-fit relative overflow-hidden bg-accent active:translate-y-px shadow-inner/0 hover:shadow-inner transition-all duration-75 ease-out", className)}
             type="button"

@@ -38,12 +38,18 @@ export function SettingsDialog({
     { kind: "idle" } | { kind: "checking" } | { kind: "ok"; message: string } | { kind: "bad"; message: string }
   >({ kind: "idle" });
 
-  React.useEffect(() => {
+  // The dialog keeps its own draft of the key, so the saved value is only
+  // replaced once Groq has confirmed it. The draft is re-seeded whenever the
+  // dialog is opened, which is a change of the dialog's identity rather than
+  // a reaction to a state update.
+  const [lastOpen, setLastOpen] = React.useState(open);
+  if (open !== lastOpen) {
+    setLastOpen(open);
     if (open) {
       setDraftKey(apiKey);
       setState({ kind: "idle" });
     }
-  }, [open, apiKey]);
+  }
 
   const check = async () => {
     setState({ kind: "checking" });

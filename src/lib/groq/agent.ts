@@ -19,8 +19,11 @@ import { complete, stream, type GroqMessage, type GroqOptions } from "./client";
 /** How many retrieve-then-check rounds run before the answer is written. */
 export const MAX_ROUNDS = 3;
 
-/** Below this retrieval score, the model is asked for a better query. */
-const WEAK_RETRIEVAL_SCORE = 0.18;
+/**
+ * A retrieval above this score is trusted without asking the model whether it
+ * is enough, which saves a round trip on the common case.
+ */
+const CONFIDENT_RETRIEVAL_SCORE = 0.45;
 
 const PLANNER_SYSTEM = [
   "You rewrite a user's question into a single search query for a document",
@@ -179,7 +182,7 @@ export async function runAgent(
     /* ---- Ask the model whether this is enough ----------------------- */
 
     const bestScore = Math.max(...results.map((entry) => entry.score));
-    if (bestScore >= 0.45) break;
+    if (bestScore >= CONFIDENT_RETRIEVAL_SCORE) break;
 
     const assessment = await assessResults(
       request.question,
