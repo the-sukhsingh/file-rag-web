@@ -18,10 +18,11 @@ describe("normalizeLatexDelimiters", () => {
 
   it("keeps a formula that spans lines in one block", () => {
     const input = "before\n\n\\[\nP = \\frac{4}{52}\n\\]\n\nafter";
-    // The line breaks are kept: a dollar block on its own lines is display
-    // maths, which is what the model meant.
+    // The line breaks are flattened: the markdown parser splits a dollar
+    // block at a newline, and the second half of the formula would not be a
+    // formula on its own.
     expect(normalizeLatexDelimiters(input)).toBe(
-      "before\n\n$$\nP = \\frac{4}{52}\n$$\n\nafter"
+      "before\n\n$$P = \\frac{4}{52}$$\n\nafter"
     );
   });
 

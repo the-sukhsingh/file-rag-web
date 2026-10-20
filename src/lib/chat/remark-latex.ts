@@ -19,6 +19,18 @@ const INLINE = /\\\(([\s\S]*?)\\\)/g;
 const DISPLAY_DOLLAR = /\$\$([^\n]+?)\$\$/g;
 
 /**
+ * Flattens a formula onto one line.
+ *
+ * A model writes a display formula across several lines, and the markdown
+ * parser splits a `$$` block at a newline - so the second half of the formula
+ * becomes a maths node of its own, which is not a formula and is rejected.
+ * The line breaks inside the formula are not meaningful to LaTeX.
+ */
+function flatten(body: string): string {
+  return body.replace(/\s*\n\s*/g, " ").trim();
+}
+
+/**
  * Rewrites the delimiters in a markdown document.
  *
  * Fenced code blocks are left alone, so a document that shows LaTeX in a
@@ -38,9 +50,9 @@ export function normalizeLatexDelimiters(markdown: string): string {
   );
 
   const rewritten = withoutCode
-    .replace(DISPLAY_DOLLAR, (_match, body: string) => `$$${body}$$`)
-    .replace(DISPLAY, (_match, body: string) => `$$${body}$$`)
-    .replace(INLINE, (_match, body: string) => `$${body}$`);
+    .replace(DISPLAY_DOLLAR, (_match, body: string) => `$$${flatten(body)}$$`)
+    .replace(DISPLAY, (_match, body: string) => `$$${flatten(body)}$$`)
+    .replace(INLINE, (_match, body: string) => `$${flatten(body)}$`);
 
   return rewritten.replace(/ CODE(\d+) /g, (_match, index: string) =>
     fences[Number(index)] ?? ""
