@@ -337,4 +337,26 @@
     line-height: 1.1;
     letter-spacing: normal;
   }
+
+  /**
+   * Rendered maths.
+   *
+   * A display formula is often wider than the column it sits in, so it
+   * scrolls sideways rather than being cut off. The inline maths stays with
+   * the text around it.
+   */
+  .katex-display {
+    @apply my-3 overflow-x-auto overflow-y-hidden;
+    padding-bottom: 2px;
+  }
+
+  .katex {
+    @apply text-charcoal;
+    font-size: 1.02em;
+  }
+
+  /* A long formula inside a paragraph scrolls with it, not the paragraph. */
+  .prose .katex {
+    @apply max-w-full;
+  }
 }
