@@ -24,6 +24,16 @@ import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
+import type { Folder } from "@/lib/library/types";
 import { pluralize } from "@/lib/utils";
 
 /**
@@ -62,6 +73,9 @@ export default function LibraryDashboard() {
   const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [newFolderParent, setNewFolderParent] = React.useState<string | null>(null);
+  const [folderToRename, setFolderToRename] = React.useState<Folder | null>(null);
+  const [renameValue, setRenameValue] = React.useState("");
+  const [folderToDelete, setFolderToDelete] = React.useState<Folder | null>(null);
   const [status, setStatus] = React.useState<Status>({ kind: "idle" });
   const [embedding, setEmbedding] = React.useState<
     { state: string; progress?: number; message?: string }
@@ -136,6 +150,15 @@ export default function LibraryDashboard() {
     } finally {
       setStatus({ kind: "idle" });
     }
+  };
+
+  const handleRenameFolder = (folder: Folder) => {
+    setFolderToRename(folder);
+    setRenameValue(folder.name);
+  };
+
+  const handleDeleteFolder = (folder: Folder) => {
+    setFolderToDelete(folder);
   };
 
   return (
@@ -249,6 +272,13 @@ export default function LibraryDashboard() {
                   nodes={filterTree(tree, search)}
                   activeFolderId={activeFolderId ?? undefined}
                   onOpenFolder={handleOpenFolder}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                  onNewSubfolder={(folder) => {
+                    setNewFolderParent(folder.id);
+                    setNewFolderName("");
+                    setIsNewFolderOpen(true);
+                  }}
                 />
               )}
             </div>
@@ -422,6 +452,100 @@ export default function LibraryDashboard() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Rename folder */}
+      <Dialog
+        open={Boolean(folderToRename)}
+        onOpenChange={(open) => !open && setFolderToRename(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!folderToRename) return;
+              const name = renameValue.trim();
+              if (!name) return;
+              await library.renameFolder(folderToRename.id, name);
+              setFolderToRename(null);
+              setRenameValue("");
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="font-display text-[24px] font-normal">
+                Rename folder
+              </DialogTitle>
+              <DialogDescription>
+                The folder keeps its documents and its passages.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 py-4">
+              <Label htmlFor="rename-folder" className="text-[13px] font-medium">
+                Name
+              </Label>
+              <Input
+                id="rename-folder"
+                autoFocus
+                required
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                className="h-10 rounded-[12px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setFolderToRename(null)}
+                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
+              >
+                Rename
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete folder */}
+      <AlertDialog
+        open={Boolean(folderToDelete)}
+        onOpenChange={(open) => !open && setFolderToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &quot;{folderToDelete?.name}&quot;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The folder, everything inside it and every passage it holds will
+              be removed from this device. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFolderToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (!folderToDelete) return;
+                await library.removeFolder(folderToDelete.id);
+                if (activeFolderId === folderToDelete.id) {
+                  setActiveFolderId(null);
+                }
+                setFolderToDelete(null);
+              }}
+            >
+              Delete folder
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {status.kind === "working" && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[13px] text-charcoal shadow-xl">

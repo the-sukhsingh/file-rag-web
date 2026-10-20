@@ -6,8 +6,20 @@ import {
   FileTextIcon,
   FolderIcon,
   FolderOpenIcon,
+  FolderPlusIcon,
+  MoreVerticalIcon,
+  PencilIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { cn } from "cn";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import type { DocumentRecord, Folder } from "@/lib/library/types";
 
@@ -68,11 +80,17 @@ export function FolderTree({
   nodes,
   activeFolderId,
   onOpenFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onNewSubfolder,
   depth = 0,
 }: {
   nodes: TreeNode[];
   activeFolderId?: string;
   onOpenFolder: (folderId: string) => void;
+  onRenameFolder?: (folder: Folder) => void;
+  onDeleteFolder?: (folder: Folder) => void;
+  onNewSubfolder?: (folder: Folder) => void;
   depth?: number;
 }) {
   if (!nodes.length) return null;
@@ -85,6 +103,9 @@ export function FolderTree({
           node={node}
           activeFolderId={activeFolderId}
           onOpenFolder={onOpenFolder}
+          onRenameFolder={onRenameFolder}
+          onDeleteFolder={onDeleteFolder}
+          onNewSubfolder={onNewSubfolder}
           depth={depth}
         />
       ))}
@@ -96,11 +117,17 @@ function FolderTreeItem({
   node,
   activeFolderId,
   onOpenFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onNewSubfolder,
   depth,
 }: {
   node: TreeNode;
   activeFolderId?: string;
   onOpenFolder: (folderId: string) => void;
+  onRenameFolder?: (folder: Folder) => void;
+  onDeleteFolder?: (folder: Folder) => void;
+  onNewSubfolder?: (folder: Folder) => void;
   depth: number;
 }) {
   const [open, setOpen] = React.useState(depth < 1);
@@ -169,6 +196,44 @@ function FolderTreeItem({
             </span>
           )}
         </button>
+
+        {(onRenameFolder || onDeleteFolder || onNewSubfolder) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Actions for ${node.folder.name}`}
+                  className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-pebble opacity-0 transition-opacity hover:bg-stone-mist/60 hover:text-charcoal focus-visible:opacity-100 group-hover/folder:opacity-100"
+                >
+                  <MoreVerticalIcon className="size-3.5" />
+                </button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem
+                onClick={() => onNewSubfolder?.(node.folder)}
+              >
+                <FolderPlusIcon className="mr-2 size-3.5" />
+                New sub-folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onRenameFolder?.(node.folder)}
+              >
+                <PencilIcon className="mr-2 size-3.5" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onDeleteFolder?.(node.folder)}
+              >
+                <Trash2Icon className="mr-2 size-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {open && (node.children.length > 0 || node.documents.length > 0) && (
@@ -179,6 +244,9 @@ function FolderTreeItem({
               node={child}
               activeFolderId={activeFolderId}
               onOpenFolder={onOpenFolder}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
+              onNewSubfolder={onNewSubfolder}
               depth={depth + 1}
             />
           ))}
