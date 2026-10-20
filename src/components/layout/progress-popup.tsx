@@ -16,13 +16,19 @@ export function ProgressPopup({
   percent,
   className,
 }: {
-  /** The message. A percentage is pulled out of it when there is one. */
+  /** The message. A trailing percentage is pulled out of it, so the number
+   *  is only ever shown once. */
   label: string;
   /** How far along, from 0 to 100. */
   percent?: number;
   className?: string;
 }) {
   const clamped = Math.max(0, Math.min(100, percent ?? 0));
+
+  // The message often carries its own percentage - "Downloading the model
+  // (42%)". The number lives in its own column, so it is stripped from the
+  // label rather than shown twice.
+  const text = label.replace(/\s*\(?\d+\s*%\)?\s*$/, "").trim();
 
   return (
     <div
@@ -53,7 +59,7 @@ export function ProgressPopup({
       <Loader2Icon className="relative z-10 size-3.5 shrink-0 animate-spin text-electric-indigo" />
 
       <span className="relative z-10 min-w-0 flex-1 truncate font-mono tabular-nums">
-        {label}
+        {text}
       </span>
 
       {percent !== undefined && (
