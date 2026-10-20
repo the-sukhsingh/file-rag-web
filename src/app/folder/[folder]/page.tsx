@@ -4,216 +4,101 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
+  ArrowLeftIcon,
+  ChevronRightIcon,
+  FileTextIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  MessageSquareIcon,
   MoreHorizontalIcon,
-  PanelRightIcon,
-  SparklesIcon,
+  PencilIcon,
   Trash2Icon,
+  UploadIcon,
 } from "lucide-react";
 
-import {
-  ContextPanel,
-  type ContextSelection,
-} from "@/components/chat/context-panel";
-import {
-  FolderBreadcrumb,
-  FolderEmpty,
-} from "@/components/chat/folder-bar";
-import { MessageList } from "@/components/chat/message-list";
-import { PromptBox } from "@/components/chat/prompt-box";
-import { SettingsDialog } from "@/components/layout/settings-dialog";
-import { TopNav } from "@/components/layout/top-nav";
+import { LibraryTree, buildTree } from "@/components/library/library-tree";
+import { MovePicker } from "@/components/library/move-picker";
 import { useLibrary } from "@/components/library/library-provider";
-import { useSettings } from "@/components/library/settings-provider";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { createMessageId, now } from "@/lib/chat/ids";
-import { runAgent } from "@/lib/groq/agent";
-import type { ChatMessage, Folder, TraceStep } from "@/lib/library/types";
-import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
+import type { DocumentRecord, Folder } from "@/lib/library/types";
 import { pluralize } from "@/lib/utils";
 
 /**
- * The folder workspace.
+ * The folder.
  *
- * The conversation is scoped to one folder: the retriever only ever sees the
- * chunks of that folder and its sub-folders, and the user can pin or exclude
- * passages to steer the answer.
- *
- * The page is one column. The context panel is a second column on a wide
- * screen and a drawer on a narrow one, so the conversation always has the
- * room it needs.
+ * This is where a folder is managed: what is in it, what can be added to it,
+ * and where each thing can be moved. The chat lives one step further in, at
+ * `/folder/<id>/chat`, so that "tidy the folder" and "ask the folder" stay
+ * separate jobs.
  */
 export default function FolderPage() {
   const params = useParams<{ folder: string }>();
   const router = useRouter();
   const library = useLibrary();
-  const settings = useSettings();
 
   const folderId = params?.folder ?? "";
   const folder = library.getFolder(folderId);
 
-  const [chunks, setChunks] = React.useState<
-    Awaited<ReturnType<typeof library.loadChunks>>
-  >([]);
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [selection, setSelection] = React.useState<ContextSelection>({
-    pinned: new Set(),
-    excluded: new Set(),
-  });
-  const [isBusy, setIsBusy] = React.useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  const [isContextOpen, setIsContextOpen] = React.useState(false);
-  const [lastRetrieved, setLastRetrieved] = React.useState<string[]>([]);
-  const [embedding, setEmbedding] = React.useState<{
-    state: string;
-    message?: string;
-  }>({ state: "idle" });
-  const abortRef = React.useRef<AbortController | null>(null);
+  const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
+  const [newFolderName, setNewFolderName] = React.useState("");
+  const [folderToRename, setFolderToRename] = React.useState<Folder | null>(null);
+  const [renameValue, setRenameValue] = React.useState("");
+  const [folderToDelete, setFolderToDelete] = React.useState<Folder | null>(null);
+  const [folderToMove, setFolderToMove] = React.useState<Folder | null>(null);
+  const [documentToMove, setDocumentToMove] = React.useState<DocumentRecord | null>(
+    null
+  );
+  const [documentToDelete, setDocumentToDelete] =
+    React.useState<DocumentRecord | null>(null);
 
-  React.useEffect(
-    () =>
-      onEmbeddingStatus((next) =>
-        setEmbedding({
-          state: next.state,
-          message: next.state === "loading" ? next.message : undefined,
-        })
-      ),
-    []
+  const tree = React.useMemo(
+    () => buildTree(library.folders, library.documents, library.summaries),
+    [library.folders, library.documents, library.summaries]
   );
 
-  // Load the passages of this folder and of every folder beneath it.
-  const folders = library.folders;
-  const loadChunks = library.loadChunks;
-  const revision = library.revision;
+  const summary = library.summaries.get(folderId);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const ids = collectFolderIds(folderId, folders);
-      const groups = await Promise.all(ids.map((id) => loadChunks(id)));
-      if (cancelled) return;
-      setChunks(groups.flat());
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [folderId, folders, loadChunks, revision]);
-
-  const handleAsk = async (question: string) => {
-    if (!settings.hasKey) {
-      setIsSettingsOpen(true);
-      return;
-    }
-
-    const userMessage: ChatMessage = {
-      id: createMessageId(),
-      role: "user",
-      content: question,
-      createdAt: now(),
-    };
-    const assistantId = createMessageId();
-
-    setMessages((previous) => [
-      ...previous,
-      userMessage,
-      {
-        id: assistantId,
-        role: "assistant",
-        content: "",
-        trace: [],
-        createdAt: now(),
-      },
-    ]);
-    setIsBusy(true);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const patch = (update: (message: ChatMessage) => ChatMessage) =>
-      setMessages((previous) =>
-        previous.map((message) =>
-          message.id === assistantId ? update(message) : message
-        )
-      );
-
-    try {
-      await runAgent(
-        {
-          question,
-          folderName: folder?.name ?? "this folder",
-          chunks,
-          pinnedChunkIds: [...selection.pinned],
-          excludedChunkIds: [...selection.excluded],
-          history: messages.map((message) => ({
-            role: message.role,
-            content: message.content,
-          })),
-          apiKey: settings.apiKey,
-          model: settings.model,
-          signal: controller.signal,
-        },
-        {
-          onTrace: (step: TraceStep) => {
-            patch((message) => {
-              const trace = message.trace ?? [];
-              const index = trace.findIndex((entry) => entry.id === step.id);
-              if (index === -1) return { ...message, trace: [...trace, step] };
-              const next = [...trace];
-              next[index] = step;
-              return { ...message, trace: next };
-            });
-          },
-          onText: (delta: string) => {
-            patch((message) => ({
-              ...message,
-              content: message.content + delta,
-            }));
-          },
-          onCitations: (chunkIds: string[]) => {
-            setLastRetrieved(chunkIds);
-            patch((message) => ({ ...message, citations: chunkIds }));
-          },
-        }
-      );
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "The question could not be answered.";
-        patch((current) => ({
-          ...current,
-          content: current.content
-            ? `${current.content}\n\n_The request failed: ${message}_`
-            : `_The request failed: ${message}_`,
-        }));
-      }
-    } finally {
-      abortRef.current = null;
-      setIsBusy(false);
-    }
-  };
-
-  const handleStop = () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setIsBusy(false);
-  };
+  const documents = React.useMemo(
+    () =>
+      library.documents
+        .filter((document) => {
+          const container = library.folders.find(
+            (entry) => entry.id === document.folderId
+          );
+          if (!container) return false;
+          return container.id === folderId || container.parentId === folderId;
+        })
+        .sort((a, b) => b.createdAt - a.createdAt),
+    [library.documents, library.folders, folderId]
+  );
 
   if (!library.ready) {
     return (
@@ -227,7 +112,7 @@ export default function FolderPage() {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         <span className="flex size-12 items-center justify-center rounded-[16px] bg-warm-bone text-bark-grey">
-          <FolderIconFallback />
+          <FolderIcon className="size-6" />
         </span>
         <div className="flex flex-col gap-1.5">
           <h1 className="text-[20px] font-semibold text-charcoal">
@@ -247,231 +132,545 @@ export default function FolderPage() {
     );
   }
 
-  const hasContent = chunks.length > 0;
-  const ancestors = collectAncestors(folder, folders);
-
-  const contextPanel = (
-    <ContextPanel
-      chunks={chunks}
-      selection={selection}
-      onChange={setSelection}
-      lastRetrieved={lastRetrieved}
-    />
-  );
+  const ancestors = collectAncestors(folder, library.folders);
+  const passageCount = summary?.passageCount ?? 0;
+  const canChat = passageCount > 0;
+  const children = library.childFolders(folder.id);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background">
-      <TopNav
-        active="folder"
-        hasKey={settings.hasKey}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        middle={
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <FolderBreadcrumb folder={folder} ancestors={ancestors} />
-            <span className="hidden shrink-0 items-center gap-1.5 font-mono text-[11px] text-pebble sm:flex">
-              <span className="h-3 w-px bg-stone-mist" />
-              {chunks.length} {chunks.length === 1 ? "passage" : "passages"}
-            </span>
-          </div>
-        }
-        actions={
-          <>
-            {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setMessages([])}
-                className="h-8 px-2.5 text-[12px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
-              >
-                Clear
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={`Actions for ${folder.name}`}
-                    className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal"
-                  >
-                    <MoreHorizontalIcon className="size-4" />
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => {
-                    void library
-                      .removeFolder(folder.id)
-                      .then(() => router.push("/"));
-                  }}
+    <div className="min-h-dvh bg-background">
+      {/* The header */}
+      <div className="border-b border-stone-mist bg-paper-white">
+        <div className="mx-auto w-full max-w-[1200px] px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <nav className="flex items-center gap-1.5 text-[12px] text-bark-grey">
+                <Link
+                  href="/"
+                  className="flex items-center gap-1 transition-colors hover:text-charcoal"
                 >
-                  <Trash2Icon className="mr-2 size-3.5" />
-                  Delete folder
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Drawer
-              open={isContextOpen}
-              onOpenChange={setIsContextOpen}
-              swipeDirection="right"
-            >
-              <DrawerTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Open the context panel"
-                    className="flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal lg:hidden"
-                  >
-                    <PanelRightIcon className="size-4" />
-                  </button>
-                }
-              />
-              <DrawerContent className="w-full max-w-[340px]">
-                <DrawerTitle className="sr-only">Context</DrawerTitle>
-                <DrawerDescription className="sr-only">
-                  The passages the assistant may use
-                </DrawerDescription>
-                {contextPanel}
-              </DrawerContent>
-            </Drawer>
-          </>
-        }
-      />
-
-      {/* The workspace */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[1fr_320px]">
-        <section className="flex min-h-0 flex-col">
-          {messages.length === 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 px-6 pb-16">
-              {hasContent ? (
-                <>
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    <span className="flex size-10 items-center justify-center rounded-[12px] bg-electric-indigo/10 text-electric-indigo">
-                      <SparklesIcon className="size-5" />
-                    </span>
-                    <h1 className="display-face text-[28px] text-charcoal">
-                      Ask this folder
-                    </h1>
-                    <p className="max-w-[42ch] text-[14px] leading-[1.5] text-bark-grey">
-                      {pluralize(chunks.length, "passage")} loaded. Ask anything
-                      and I will find the parts that answer it.
-                    </p>
-                  </div>
-
-                  <div className="flex w-full max-w-[440px] flex-col gap-1.5">
-                    {[
-                      "Summarise the main points of this folder",
-                      "What are the key terms and definitions here?",
-                      "Where does this document argue against the consensus?",
-                    ].map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        onClick={() => void handleAsk(suggestion)}
-                        className="rounded-[10px] border border-stone-mist bg-paper-white px-3.5 py-2.5 text-left text-[13px] text-charcoal transition-colors hover:border-electric-indigo/40 hover:bg-warm-bone"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <FolderEmpty
-                  hasKey={settings.hasKey}
-                  onOpenSettings={() => setIsSettingsOpen(true)}
-                />
-              )}
+                  <ArrowLeftIcon className="size-3" />
+                  Library
+                </Link>
+                {ancestors.map((ancestor) => (
+                  <React.Fragment key={ancestor.id}>
+                    <ChevronRightIcon className="size-3 text-pebble" />
+                    <span>{ancestor.name}</span>
+                  </React.Fragment>
+                ))}
+              </nav>
+              <h1 className="flex items-center gap-2 text-[24px] font-semibold leading-[1.38] text-charcoal">
+                <FolderIcon className="size-5 text-electric-indigo" />
+                {folder.name}
+              </h1>
+              <p className="font-mono text-[11px] text-bark-grey">
+                {pluralize(documents.length, "document")} ·{" "}
+                {pluralize(passageCount, "passage")}
+              </p>
             </div>
-          ) : (
-            <MessageList messages={messages} />
-          )}
 
-          <PromptBox
-            onSubmit={(text) => void handleAsk(text)}
-            onStop={handleStop}
-            isBusy={isBusy}
-            disabled={!hasContent || !settings.hasKey}
-            placeholder={
-              !settings.hasKey
-                ? "Add your Groq API key to start asking questions"
-                : hasContent
-                  ? `Ask about ${folder.name}...`
-                  : "This folder has no passages yet"
-            }
-          />
-        </section>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsNewFolderOpen(true)}
+                className="h-9 rounded-[8px] border-stone-mist px-3.5 text-[13px] font-semibold uppercase tracking-[0.04em] text-charcoal hover:border-charcoal"
+              >
+                <FolderPlusIcon className="size-3.5" />
+                Sub-folder
+              </Button>
 
-        <div className="hidden min-h-0 lg:block">{contextPanel}</div>
+              <Button
+                onClick={() => router.push(`/folder/${folder.id}/chat`)}
+                disabled={!canChat}
+                className="h-9 rounded-[8px] bg-electric-indigo px-3.5 text-[13px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet disabled:opacity-50"
+              >
+                <MessageSquareIcon className="size-3.5" />
+                Ask
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${folder.name}`}
+                      className="flex size-9 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal"
+                    >
+                      <MoreHorizontalIcon className="size-4" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onClick={() => setFolderToMove(folder)}>
+                    <FolderIcon className="mr-2 size-3.5" />
+                    Move folder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setFolderToRename(folder);
+                      setRenameValue(folder.name);
+                    }}
+                  >
+                    <PencilIcon className="mr-2 size-3.5" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setFolderToDelete(folder)}
+                  >
+                    <Trash2Icon className="mr-2 size-3.5" />
+                    Delete folder
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {embedding.state === "loading" && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-[12px] border border-stone-mist bg-paper-white px-4 py-2.5 text-[12px] text-bark-grey shadow-xl">
-          <Spinner className="size-3.5 text-electric-indigo" />
-          {embedding.message ?? "Preparing the embedding model"}
-        </div>
-      )}
+      <main className="mx-auto w-full max-w-[1200px] px-6 py-8">
+        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+          {/* The tree */}
+          <aside className="flex flex-col self-start rounded-[16px] border border-stone-mist bg-paper-white">
+            <div className="border-b border-stone-mist px-4 py-3">
+              <span className="tag-label text-bark-grey">Library</span>
+            </div>
+            <nav className="p-2">
+              {tree.length === 0 ? (
+                <p className="px-2 py-6 text-center text-[12px] text-bark-grey">
+                  No folders yet.
+                </p>
+              ) : (
+                <LibraryTree
+                  nodes={tree}
+                  activeFolderId={folder.id}
+                  onOpenFolder={(id) => router.push(`/folder/${id}`)}
+                  onRenameFolder={(target) => {
+                    setFolderToRename(target);
+                    setRenameValue(target.name);
+                  }}
+                  onDeleteFolder={setFolderToDelete}
+                  onNewSubfolder={() => setIsNewFolderOpen(true)}
+                />
+              )}
+            </nav>
+          </aside>
 
-      <SettingsDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-      />
+          {/* What is in the folder */}
+          <section className="flex flex-col gap-6">
+            {documents.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-stone-mist bg-paper-white px-6 py-16 text-center">
+                <span className="flex size-11 items-center justify-center rounded-[12px] bg-warm-bone text-bark-grey">
+                  <UploadIcon className="size-5" />
+                </span>
+                <div className="flex flex-col gap-1.5">
+                  <h2 className="text-[16px] font-semibold text-charcoal">
+                    This folder is empty
+                  </h2>
+                  <p className="max-w-[42ch] text-[14px] leading-[1.5] text-bark-grey">
+                    Import a PDF and it is split into chapters and passages
+                    here. Or move a document in from another folder.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => router.push("/")}
+                  className="mt-1 h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
+                >
+                  <UploadIcon className="size-3.5" />
+                  Import a PDF
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col overflow-hidden rounded-[16px] border border-stone-mist bg-paper-white">
+                <div className="flex items-center justify-between border-b border-stone-mist px-5 py-3.5">
+                  <span className="tag-label text-bark-grey">
+                    {pluralize(documents.length, "document")}
+                  </span>
+                  <span className="font-mono text-[11px] text-pebble">
+                    {pluralize(passageCount, "passage")}
+                  </span>
+                </div>
+
+                <ul className="flex flex-col divide-y divide-stone-mist">
+                  {documents.map((document) => {
+                    const chapters = library.chaptersOf(document.id);
+
+                    return (
+                      <li
+                        key={document.id}
+                        className="group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-warm-bone"
+                      >
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-warm-bone text-bark-grey">
+                          <FileTextIcon className="size-4" />
+                        </span>
+
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <span className="truncate text-[14px] font-medium text-charcoal">
+                            {document.name}
+                          </span>
+                          <span className="truncate font-mono text-[11px] text-bark-grey">
+                            {pluralize(document.chunkCount, "passage")} ·{" "}
+                            {pluralize(document.pageCount, "page")} ·{" "}
+                            {pluralize(chapters.length, "chapter")}
+                          </span>
+                        </div>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <button
+                                type="button"
+                                aria-label={`Actions for ${document.name}`}
+                                className="flex size-7 shrink-0 items-center justify-center rounded-[6px] text-pebble opacity-0 transition-opacity hover:bg-stone-mist hover:text-charcoal focus-visible:opacity-100 group-hover:opacity-100"
+                              >
+                                <MoreHorizontalIcon className="size-4" />
+                              </button>
+                            }
+                          />
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              onClick={() => setDocumentToMove(document)}
+                            >
+                              <FolderIcon className="mr-2 size-3.5" />
+                              Move to folder
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDocumentToDelete(document)}
+                            >
+                              <Trash2Icon className="mr-2 size-3.5" />
+                              Delete document
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* The sub-folders */}
+            {children.length > 0 && (
+              <div className="flex flex-col overflow-hidden rounded-[16px] border border-stone-mist bg-paper-white">
+                <div className="border-b border-stone-mist px-5 py-3.5">
+                  <span className="tag-label text-bark-grey">Sub-folders</span>
+                </div>
+                <ul className="flex flex-col divide-y divide-stone-mist">
+                  {children.map((child) => {
+                    const childSummary = library.summaries.get(child.id);
+                    return (
+                      <li
+                        key={child.id}
+                        className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-warm-bone"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/folder/${child.id}`)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <FolderIcon className="size-4 shrink-0 text-electric-indigo" />
+                          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-charcoal">
+                            {child.name}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] text-pebble">
+                            {pluralize(
+                              childSummary?.documentCount ?? 0,
+                              "document"
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+
+      {/* ---- Dialogs -------------------------------------------------- */}
+
+      <Dialog open={isNewFolderOpen} onOpenChange={setIsNewFolderOpen}>
+        <DialogContent className="sm:max-w-md">
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const name = newFolderName.trim();
+              if (!name) return;
+              await library.createFolder(name, folder.id);
+              setNewFolderName("");
+              setIsNewFolderOpen(false);
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="font-display text-[24px] font-normal">
+                New sub-folder
+              </DialogTitle>
+              <DialogDescription>
+                Inside {folder.name}. A folder is what you chat with.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 py-4">
+              <Label htmlFor="sub-folder-name" className="text-[13px] font-medium">
+                Name
+              </Label>
+              <Input
+                id="sub-folder-name"
+                autoFocus
+                required
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                placeholder="e.g. Chapter drafts"
+                className="h-10 rounded-[12px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsNewFolderOpen(false)}
+                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
+              >
+                Create
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(folderToRename)}
+        onOpenChange={(open) => !open && setFolderToRename(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!folderToRename) return;
+              const name = renameValue.trim();
+              if (!name) return;
+              await library.renameFolder(folderToRename.id, name);
+              setFolderToRename(null);
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="font-display text-[24px] font-normal">
+                Rename folder
+              </DialogTitle>
+              <DialogDescription>
+                The documents and passages inside are kept.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 py-4">
+              <Label htmlFor="rename-folder" className="text-[13px] font-medium">
+                Name
+              </Label>
+              <Input
+                id="rename-folder"
+                autoFocus
+                required
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                className="h-10 rounded-[12px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setFolderToRename(null)}
+                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
+              >
+                Rename
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(folderToMove)}
+        onOpenChange={(open) => !open && setFolderToMove(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[24px] font-normal">
+              Move folder
+            </DialogTitle>
+            <DialogDescription>
+              Choose where {folderToMove?.name} should live. Everything inside
+              it moves too.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <MovePicker
+              folders={library.folders}
+              summaries={library.summaries}
+              currentFolderId={folderToMove?.id}
+              excludeIds={
+                folderToMove
+                  ? [
+                      folderToMove.id,
+                      ...descendantIds(folderToMove.id, library.folders),
+                    ]
+                  : []
+              }
+              onPick={(targetId) => {
+                if (!folderToMove) return;
+                void library.moveFolderTo(
+                  folderToMove.id,
+                  targetId === "" ? null : targetId
+                );
+                setFolderToMove(null);
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFolderToMove(null)}
+              className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(documentToMove)}
+        onOpenChange={(open) => !open && setDocumentToMove(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[24px] font-normal">
+              Move document
+            </DialogTitle>
+            <DialogDescription>
+              Choose where {documentToMove?.name} should live.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <MovePicker
+              folders={library.folders}
+              summaries={library.summaries}
+              currentFolderId={
+                documentToMove
+                  ? containerOf(documentToMove, library.folders)
+                  : null
+              }
+              onPick={(targetId) => {
+                if (!documentToMove || !targetId) return;
+                void library.moveDocumentTo(documentToMove.id, targetId);
+                setDocumentToMove(null);
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDocumentToMove(null)}
+              className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(folderToDelete)}
+        onOpenChange={(open) => !open && setFolderToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &quot;{folderToDelete?.name}&quot;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {folderToDelete &&
+                describeContents(library.contentsOf(folderToDelete.id))}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFolderToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (!folderToDelete) return;
+                const wasHere = folderToDelete.id === folderId;
+                await library.removeFolder(folderToDelete.id);
+                setFolderToDelete(null);
+                if (wasHere) router.push("/");
+              }}
+            >
+              Delete folder
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(documentToDelete)}
+        onOpenChange={(open) => !open && setDocumentToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete &quot;{documentToDelete?.name}&quot;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {documentToDelete
+                ? `The document and its ${pluralize(
+                    documentToDelete.chunkCount,
+                    "passage"
+                  )} will be removed from this device. This cannot be undone.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDocumentToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                if (!documentToDelete) return;
+                await library.removeDocument(documentToDelete.id);
+                setDocumentToDelete(null);
+              }}
+            >
+              Delete document
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-}
-
-function FolderIconFallback() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18Z" />
-    </svg>
-  );
-}
-
-/**
- * The folder itself and every folder beneath it.
- */
-function collectFolderIds(
-  folderId: string,
-  folders: { id: string; parentId: string | null }[]
-): string[] {
-  const ids = new Set<string>([folderId]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const folder of folders) {
-      if (
-        folder.parentId &&
-        ids.has(folder.parentId) &&
-        !ids.has(folder.id)
-      ) {
-        ids.add(folder.id);
-        grew = true;
-      }
-    }
-  }
-  return [...ids];
 }
 
 /**
  * The folders above this one, root first.
  */
-function collectAncestors(
-  folder: Folder,
-  folders: Folder[]
-): Folder[] {
+function collectAncestors(folder: Folder, folders: Folder[]): Folder[] {
   const byId = new Map(folders.map((entry) => [entry.id, entry]));
   const ancestors: Folder[] = [];
 
@@ -482,4 +681,64 @@ function collectAncestors(
   }
 
   return ancestors;
+}
+
+/**
+ * The folder a document's container sits in.
+ */
+function containerOf(
+  document: DocumentRecord,
+  folders: Folder[]
+): string | null {
+  const container = folders.find((folder) => folder.id === document.folderId);
+  return container?.parentId ?? null;
+}
+
+/**
+ * The ids of a folder's descendants, so a folder is never moved inside
+ * itself.
+ */
+function descendantIds(folderId: string, folders: Folder[]): string[] {
+  const all = new Set<string>([folderId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const folder of folders) {
+      if (
+        folder.parentId &&
+        all.has(folder.parentId) &&
+        !all.has(folder.id)
+      ) {
+        all.add(folder.id);
+        changed = true;
+      }
+    }
+  }
+  return [...all];
+}
+
+/**
+ * A plain sentence describing what a delete will take with it.
+ */
+function describeContents(contents: {
+  folders: number;
+  documents: number;
+  passages: number;
+}): string {
+  const parts: string[] = [];
+  if (contents.folders > 0) {
+    parts.push(pluralize(contents.folders, "sub-folder"));
+  }
+  if (contents.documents > 0) {
+    parts.push(pluralize(contents.documents, "document"));
+  }
+  if (contents.passages > 0) {
+    parts.push(pluralize(contents.passages, "passage"));
+  }
+
+  if (!parts.length) {
+    return "This folder is empty, so nothing else will be removed.";
+  }
+
+  return `${parts.join(", ")} will be removed from this device. This cannot be undone.`;
 }

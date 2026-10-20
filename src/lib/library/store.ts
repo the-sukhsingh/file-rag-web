@@ -166,11 +166,6 @@ export async function moveFolder(
   const folder = folders.find((entry) => entry.id === folderId);
   if (!folder) return;
 
-  const parent = newParentId
-    ? folders.find((entry) => entry.id === newParentId)
-    : undefined;
-  const parentPath = parent ? parent.path : "";
-
   // A folder cannot be moved inside itself.
   if (newParentId === folderId) return;
   if (newParentId && isDescendant(folders, folderId, newParentId)) return;

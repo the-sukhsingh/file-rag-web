@@ -2,10 +2,7 @@
 
 import * as React from "react";
 import {
-  CheckIcon,
   ChevronRightIcon,
-  CornerDownRightIcon,
-  FileTextIcon,
   FolderIcon,
   FolderOpenIcon,
   SearchIcon,
@@ -15,7 +12,7 @@ import { cn } from "cn";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FolderSummary } from "@/components/library/library-provider";
-import type { DocumentRecord, Folder } from "@/lib/library/types";
+import type { Folder } from "@/lib/library/types";
 
 /**
  * The move picker.
@@ -27,7 +24,6 @@ import type { DocumentRecord, Folder } from "@/lib/library/types";
 export function MovePicker({
   folders,
   summaries,
-  documents,
   currentFolderId,
   excludeIds = [],
   onPick,
@@ -35,7 +31,6 @@ export function MovePicker({
 }: {
   folders: Folder[];
   summaries: Map<string, FolderSummary>;
-  documents: DocumentRecord[];
   /** The folder the item is in now. */
   currentFolderId?: string | null;
   /** Folders that cannot be picked, such as the item's own descendants. */
