@@ -17,7 +17,12 @@ import {
 
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { TopNav } from "@/components/layout/top-nav";
-import { LibraryTree, buildTree } from "@/components/library/library-tree";
+import {
+  LibraryTree,
+  buildTree,
+  documentsInFolder,
+  homeFolderId,
+} from "@/components/library/library-tree";
 import { MovePicker } from "@/components/library/move-picker";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
@@ -91,16 +96,7 @@ export default function FolderPage() {
   const summary = library.summaries.get(folderId);
 
   const documents = React.useMemo(
-    () =>
-      library.documents
-        .filter((document) => {
-          const container = library.folders.find(
-            (entry) => entry.id === document.folderId
-          );
-          if (!container) return false;
-          return container.id === folderId || container.parentId === folderId;
-        })
-        .sort((a, b) => b.createdAt - a.createdAt),
+    () => documentsInFolder(folderId, library.folders, library.documents),
     [library.documents, library.folders, folderId]
   );
 
@@ -704,8 +700,7 @@ function containerOf(
   document: DocumentRecord,
   folders: Folder[]
 ): string | null {
-  const container = folders.find((folder) => folder.id === document.folderId);
-  return container?.parentId ?? null;
+  return homeFolderId(document, folders);
 }
 
 /**

@@ -40,15 +40,53 @@ export interface TreeNode {
 }
 
 /**
- * The folders that hold documents are the containers an import creates. They
- * are not shown as folders of their own, because the document inside them is
- * what the user put in the folder.
+ * The folders an import creates: one per document, holding the chapter
+ * folders the passages live in.
+ *
+ * They are not folders the reader has to think about - the document is what
+ * was put in the folder - so they stay out of the tree and their document
+ * takes their place.
  */
-function isDocumentContainer(
-  folder: Folder,
+function containerIds(
+  folders: Folder[],
   documents: DocumentRecord[]
-): boolean {
-  return documents.some((document) => document.folderId === folder.id);
+): Set<string> {
+  const ids = new Set<string>();
+  for (const document of documents) {
+    const container = folders.find((folder) => folder.id === document.folderId);
+    if (container) ids.add(container.id);
+  }
+  return ids;
+}
+
+/**
+ * The folder a document belongs to.
+ *
+ * A document lives in the container the import made, and that container sits
+ * in the folder the user chose. A container at the library root means the
+ * document is at the root too.
+ */
+export function homeFolderId(
+  document: DocumentRecord,
+  folders: Folder[]
+): string | null {
+  const container = folders.find((folder) => folder.id === document.folderId);
+  if (!container) return null;
+  return container.parentId ?? null;
+}
+
+/**
+ * The documents that belong in a folder, whether they were imported straight
+ * into it or into a container that sits in it.
+ */
+export function documentsInFolder(
+  folderId: string | null,
+  folders: Folder[],
+  documents: DocumentRecord[]
+): DocumentRecord[] {
+  return documents
+    .filter((document) => homeFolderId(document, folders) === folderId)
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export function buildTree(
@@ -56,10 +94,14 @@ export function buildTree(
   documents: DocumentRecord[],
   summaries: Map<string, FolderSummary>
 ): TreeNode[] {
-  // The folders the user made: everything that is not a document container
-  // and not a chapter inside one.
+  const containers = containerIds(folders, documents);
+
+  // A chapter folder sits inside a container, and a container holds a
+  // document. Neither is something the reader navigates.
   const visible = folders.filter(
-    (folder) => !isDocumentContainer(folder, documents)
+    (folder) =>
+      !containers.has(folder.id) &&
+      !(folder.parentId !== null && containers.has(folder.parentId))
   );
 
   const byParent = new Map<string | null, Folder[]>();
@@ -67,13 +109,6 @@ export function buildTree(
     const list = byParent.get(folder.parentId);
     if (list) list.push(folder);
     else byParent.set(folder.parentId, [folder]);
-  }
-
-  const documentsByFolder = new Map<string, DocumentRecord[]>();
-  for (const document of documents) {
-    const list = documentsByFolder.get(document.folderId);
-    if (list) list.push(document);
-    else documentsByFolder.set(document.folderId, [document]);
   }
 
   const build = (parentId: string | null): TreeNode[] =>
@@ -89,35 +124,10 @@ export function buildTree(
           updatedAt: folder.updatedAt,
         },
         children: build(folder.id),
-        documents: (documentsByFolder.get(folder.id) ?? []).sort(
-          (a, b) => b.createdAt - a.createdAt
-        ),
+        documents: documentsInFolder(folder.id, folders, documents),
       }));
 
   return build(null);
-}
-
-/**
- * The documents that live in a folder, whether they sit in it directly or in
- * a container the import created.
- */
-export function documentsInFolder(
-  folderId: string,
-  folders: Folder[],
-  documents: DocumentRecord[]
-): DocumentRecord[] {
-  const containers = new Set(
-    folders
-      .filter((folder) => folder.parentId === folderId)
-      .map((folder) => folder.id)
-  );
-
-  return documents
-    .filter(
-      (document) =>
-        document.folderId === folderId || containers.has(document.folderId)
-    )
-    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 const ACCENT_STROKE: Record<NonNullable<Folder["accent"]>, string> = {

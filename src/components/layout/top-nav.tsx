@@ -32,7 +32,10 @@ export function TopNav({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="shrink-0 border-b border-stone-mist bg-background/90 backdrop-blur-sm">
+    <header
+      data-slot="top-nav"
+      className="shrink-0 border-b border-stone-mist bg-background/90 backdrop-blur-sm"
+    >
       <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center gap-4 px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <span className="flex size-6 items-center justify-center rounded-[7px] bg-electric-indigo text-[12px] font-semibold text-white">

@@ -21,6 +21,7 @@ import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { ShowcaseCard } from "@/components/layout/showcase-card";
 import { TopNav } from "@/components/layout/top-nav";
 import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
+import { documentsInFolder } from "@/components/library/library-tree";
 import { MovePicker } from "@/components/library/move-picker";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
@@ -113,6 +114,14 @@ export default function LibraryDashboard() {
         })
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
     [library.folders, search]
+  );
+
+  /**
+   * The documents that sit at the library root, with no folder of their own.
+   */
+  const rootDocuments = React.useMemo(
+    () => documentsInFolder(null, library.folders, library.documents),
+    [library.folders, library.documents]
   );
 
   const stats = React.useMemo(() => {
@@ -243,7 +252,7 @@ export default function LibraryDashboard() {
             )}
           </div>
 
-          {rootFolders.length === 0 ? (
+          {rootFolders.length === 0 && rootDocuments.length === 0 ? (
             <div className="mt-6 flex flex-col items-center gap-4 rounded-[16px] border border-dashed border-stone-mist bg-paper-white px-6 py-20 text-center">
               <span className="flex size-12 items-center justify-center rounded-[16px] bg-warm-bone text-bark-grey">
                 <FolderIcon className="size-6" />
@@ -388,6 +397,47 @@ export default function LibraryDashboard() {
                   </article>
                 );
               })}
+
+              {/* The documents that sit at the root of the library. */}
+              {rootDocuments.map((document) => (
+                <article
+                  key={document.id}
+                  className="group flex flex-col rounded-[16px] border border-stone-mist bg-paper-white transition-colors hover:border-electric-indigo/30"
+                >
+                  <div className="flex items-start gap-3 p-5 pb-4">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-warm-bone text-bark-grey">
+                      <FileTextIcon className="size-4.5" />
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate text-[16px] font-semibold text-charcoal">
+                        {document.name}
+                      </span>
+                      <span className="font-mono text-[11px] text-bark-grey">
+                        {pluralize(document.chunkCount, "passage")} ·{" "}
+                        {pluralize(document.pageCount, "page")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto flex items-center gap-2 border-t border-stone-mist px-5 py-3">
+                    <span className="font-mono text-[10px] text-pebble">
+                      At the library root
+                    </span>
+                    <Button
+                      size="xs"
+                      onClick={() =>
+                        router.push(
+                          `/folder/${library.documentLocation(document.id).documentFolder?.id ?? ""}/chat`
+                        )
+                      }
+                      className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+                    >
+                      <MessageSquareIcon className="size-3" />
+                      Ask
+                    </Button>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </section>
