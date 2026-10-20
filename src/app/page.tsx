@@ -143,6 +143,10 @@ export default function LibraryDashboard() {
         active="library"
         hasKey={settings.hasKey}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onNewFolder={() => {
+          setNewFolderParent(null);
+          setIsNewFolderOpen(true);
+        }}
       />
 
       <main className="mx-auto w-full max-w-[1200px] px-6 pb-24">
@@ -218,8 +222,8 @@ export default function LibraryDashboard() {
             </div>
 
             <div className="border-b border-stone-mist px-3 py-2.5">
-              <div className="relative flex items-center">
-                <SearchIcon className="pointer-events-none absolute left-2.5 size-3.5 text-pebble" />
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-pebble" />
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}

@@ -137,8 +137,8 @@ export function ContextPanel({
 
       {tab === "sources" && (
         <div className="border-b border-stone-mist px-3 py-2.5">
-          <div className="relative flex items-center">
-            <SearchIcon className="pointer-events-none absolute left-2.5 size-3.5 text-pebble" />
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-pebble" />
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}

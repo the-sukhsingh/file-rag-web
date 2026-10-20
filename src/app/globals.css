@@ -93,17 +93,14 @@
   --text-display: 80px;
   --leading-display: 1.1;
 
-  /* Spacing */
-  --spacing-8: 8px;
-  --spacing-16: 16px;
-  --spacing-24: 24px;
-  --spacing-32: 32px;
-  --spacing-40: 40px;
-  --spacing-64: 64px;
-  --spacing-80: 80px;
-  --spacing-120: 120px;
+  /*
+   * Spacing and radii are left to Tailwind's own scale on purpose. Naming a
+   * token `--spacing-16` here would replace the numeric scale, and every
+   * `p-4` in the app would become 16px of *additional* padding rather than
+   * 16px of padding. The design brief's 8px base unit is what Tailwind's
+   * default scale already is.
 
-  /* Border Radius */
+   * Border Radius */
   --radius-tags: 8px;
   --radius-cards: 16px;
   --radius-links: 8px;

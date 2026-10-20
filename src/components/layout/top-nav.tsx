@@ -16,10 +16,12 @@ import { Button } from "@/components/ui/button";
 export function TopNav({
   active,
   onOpenSettings,
+  onNewFolder,
   hasKey,
 }: {
   active?: "library" | "folder";
   onOpenSettings?: () => void;
+  onNewFolder?: () => void;
   hasKey?: boolean;
 }) {
   return (
@@ -56,11 +58,12 @@ export function TopNav({
           >
             {hasKey ? "Settings" : "API key"}
           </Button>
-          <a href="#new-folder">
-            <Button className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet">
-              New folder
-            </Button>
-          </a>
+          <Button
+            onClick={onNewFolder}
+            className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] text-white hover:bg-deep-violet"
+          >
+            New folder
+          </Button>
         </div>
       </div>
     </header>
