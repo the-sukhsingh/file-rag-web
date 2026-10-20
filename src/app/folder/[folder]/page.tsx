@@ -17,6 +17,7 @@ import {
 
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { TopNav } from "@/components/layout/top-nav";
+import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
 import {
   LibraryTree,
   buildTree,
@@ -76,6 +77,7 @@ export default function FolderPage() {
   const folder = library.getFolder(folderId);
 
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [folderToRename, setFolderToRename] = React.useState<Folder | null>(null);
@@ -279,7 +281,7 @@ export default function FolderPage() {
                   </p>
                 </div>
                 <Button
-                  onClick={() => router.push("/")}
+                  onClick={() => setIsImportOpen(true)}
                   className="mt-1 h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
                 >
                   <UploadIcon className="size-3.5" />
@@ -548,11 +550,23 @@ export default function FolderPage() {
           </div>
           <DialogFooter>
             <Button
-              variant="outline"
-              onClick={() => setFolderToMove(null)}
-              className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
+              variant="ghost"
+              size="xs"
+              onClick={() => setIsImportOpen(true)}
+              className="h-8 gap-1 px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
             >
-              Cancel
+              <UploadIcon className="size-3.5" />
+              Import
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setIsNewFolderOpen(true)}
+              className="h-8 gap-1 px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
+            >
+              <FolderPlusIcon className="size-3.5" />
+              Sub-folder
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -672,6 +686,16 @@ export default function FolderPage() {
       <SettingsDialog
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
+      />
+
+      <ImportPdfDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        folderName={folder.name}
+        onImport={async (file, onProgress) => {
+          const result = await library.importPdf(file, folder.id, onProgress);
+          return result;
+        }}
       />
     </div>
   );
