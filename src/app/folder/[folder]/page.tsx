@@ -137,7 +137,16 @@ export default function FolderPage() {
   const ancestors = collectAncestors(folder, library.folders);
   const passageCount = summary?.passageCount ?? 0;
   const canChat = passageCount > 0;
-  const children = library.childFolders(folder.id);
+
+  /**
+   * The sub-folders the reader made. The containers an import creates are not
+   * among them - a document is not a sub-folder.
+   */
+  const children = library
+    .childFolders(folder.id)
+    .filter(
+      (child) => !library.documents.some((doc) => doc.folderId === child.id)
+    );
 
   return (
     <div className="min-h-dvh bg-background">
