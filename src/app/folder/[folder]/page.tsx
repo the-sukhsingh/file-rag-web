@@ -33,6 +33,11 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import type { ChatMessage, Chunk, Folder, TraceStep } from "@/lib/library/types";
@@ -344,7 +349,7 @@ export default function FolderPage() {
   /* ---- The chat panel ----------------------------------------------- */
 
   const chatPanel = (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       {messages.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-5 py-8 text-center">
           <span className="flex size-9 items-center justify-center rounded-[11px] bg-electric-indigo/10 text-electric-indigo">
@@ -377,6 +382,115 @@ export default function FolderPage() {
         }
       />
     </div>
+  );
+
+  const explorerPanel = (
+    <aside className="flex h-full min-h-0 flex-col border-r border-stone-mist bg-paper-white">
+      <div className="flex items-center justify-between border-b border-stone-mist px-4 py-3">
+        <span className="tag-label text-bark-grey">Explorer</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="New sub-folder"
+          onClick={() => void library.createFolder("New folder", folder.id)}
+          className="text-bark-grey hover:text-charcoal"
+        >
+          <FolderPlusIcon className="size-3.5" />
+        </Button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {explorer.length === 0 ? (
+          <p className="px-2 py-6 text-center text-[12px] text-bark-grey">
+            No documents yet. Drop a PDF below.
+          </p>
+        ) : (
+          <ExplorerTree
+            documents={explorer}
+            selectedChunkId={selectedChunkId}
+            citedChunkIds={lastRetrieved}
+            onSelectChunk={(chunk) => setSelectedChunkId(chunk.id)}
+            onAddPassage={(document) => void handleAddPassage(document)}
+            onEditPassage={(chunk) => setSelectedChunkId(chunk.id)}
+            onDeletePassage={(chunk) => void handleDeletePassage(chunk)}
+            onMovePassage={(chunk) => void handleMovePassage(chunk)}
+            onTogglePin={togglePin}
+            onToggleExclude={toggleExclude}
+            pinnedIds={selection.pinned}
+            excludedIds={selection.excluded}
+          />
+        )}
+      </div>
+
+      <div className="border-t border-stone-mist p-3">
+        <DropZone
+          compact
+          onFiles={(files) => void handleFiles(files)}
+          hint="Drop PDFs to add them"
+        />
+      </div>
+    </aside>
+  );
+
+  const passagePanel = (
+    <section
+      className="relative flex h-full min-h-0 flex-1 flex-col border-r border-stone-mist bg-paper-white"
+      onDragEnter={(event) => {
+        if (event.dataTransfer.types.includes("Files")) {
+          setIsDraggingFile(true);
+        }
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsDraggingFile(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDraggingFile(false);
+        const files = Array.from(event.dataTransfer.files ?? []).filter(
+          (file) =>
+            file.type === "application/pdf" || /\.pdf$/i.test(file.name)
+        );
+        if (files.length) void handleFiles(files);
+      }}
+    >
+      <PassagePane
+        chunk={selectedChunk ?? null}
+        chapterName={selectedChapter?.name}
+        documentName={selectedDocument?.name}
+        isPinned={
+          selectedChunk ? selection.pinned.has(selectedChunk.id) : false
+        }
+        isExcluded={
+          selectedChunk ? selection.excluded.has(selectedChunk.id) : false
+        }
+        isSaving={isSaving}
+        onSave={(text) => void handleSavePassage(text)}
+        onMove={() => {
+          if (selectedChunk) void handleMovePassage(selectedChunk);
+        }}
+        onTogglePin={() => {
+          if (selectedChunk) togglePin(selectedChunk);
+        }}
+        onToggleExclude={() => {
+          if (selectedChunk) toggleExclude(selectedChunk);
+        }}
+        onDelete={() => {
+          if (selectedChunk) void handleDeletePassage(selectedChunk);
+        }}
+        onAdd={() => {
+          const first = explorer[0];
+          if (first) void handleAddPassage(first.document);
+        }}
+      />
+
+      <DropOverlay
+        active={isDraggingFile}
+        onFiles={(files) => void handleFiles(files)}
+      />
+    </section>
   );
 
   return (
@@ -455,115 +569,41 @@ export default function FolderPage() {
       />
 
       {/* The workspace: explorer, content, chat */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_1fr] xl:grid-cols-[260px_1fr_380px]">
-        {/* The explorer */}
-        <aside className="hidden min-h-0 flex-col border-r border-stone-mist bg-paper-white lg:flex">
-          <div className="flex items-center justify-between border-b border-stone-mist px-4 py-3">
-            <span className="tag-label text-bark-grey">Explorer</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="New sub-folder"
-              onClick={() => void library.createFolder("New folder", folder.id)}
-              className="text-bark-grey hover:text-charcoal"
-            >
-              <FolderPlusIcon className="size-3.5" />
-            </Button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {explorer.length === 0 ? (
-              <p className="px-2 py-6 text-center text-[12px] text-bark-grey">
-                No documents yet. Drop a PDF below.
-              </p>
-            ) : (
-                <ExplorerTree
-                documents={explorer}
-                selectedChunkId={selectedChunkId}
-                citedChunkIds={lastRetrieved}
-                onSelectChunk={(chunk) => setSelectedChunkId(chunk.id)}
-                onAddPassage={(document) => void handleAddPassage(document)}
-                onEditPassage={(chunk) => setSelectedChunkId(chunk.id)}
-                onDeletePassage={(chunk) => void handleDeletePassage(chunk)}
-                onMovePassage={(chunk) => void handleMovePassage(chunk)}
-                onTogglePin={togglePin}
-                onToggleExclude={toggleExclude}
-                pinnedIds={selection.pinned}
-                excludedIds={selection.excluded}
-              />
-            )}
-          </div>
-
-          <div className="border-t border-stone-mist p-3">
-            <DropZone
-              compact
-              onFiles={(files) => void handleFiles(files)}
-              hint="Drop PDFs to add them"
-            />
-          </div>
-        </aside>
-
-        {/* The passage */}
-        <section
-          className="relative flex min-h-0 flex-col border-r border-stone-mist bg-paper-white"
-          onDragEnter={(event) => {
-            if (event.dataTransfer.types.includes("Files")) {
-              setIsDraggingFile(true);
-            }
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-              setIsDraggingFile(false);
-            }
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDraggingFile(false);
-            const files = Array.from(event.dataTransfer.files ?? []).filter(
-              (file) =>
-                file.type === "application/pdf" || /\.pdf$/i.test(file.name)
-            );
-            if (files.length) void handleFiles(files);
-          }}
+      <ResizablePanelGroup
+        direction="horizontal"
+        className="hidden min-h-0 flex-1 xl:flex"
+      >
+        <ResizablePanel
+          defaultSize="22%"
+          minSize="16%"
+          maxSize="34%"
+          className="min-w-0"
         >
-          <PassagePane
-            chunk={selectedChunk ?? null}
-            chapterName={selectedChapter?.name}
-            documentName={selectedDocument?.name}
-            isPinned={
-              selectedChunk ? selection.pinned.has(selectedChunk.id) : false
-            }
-            isExcluded={
-              selectedChunk ? selection.excluded.has(selectedChunk.id) : false
-            }
-            isSaving={isSaving}
-            onSave={(text) => void handleSavePassage(text)}
-            onMove={() => {
-              if (selectedChunk) void handleMovePassage(selectedChunk);
-            }}
-            onTogglePin={() => {
-              if (selectedChunk) togglePin(selectedChunk);
-            }}
-            onToggleExclude={() => {
-              if (selectedChunk) toggleExclude(selectedChunk);
-            }}
-            onDelete={() => {
-              if (selectedChunk) void handleDeletePassage(selectedChunk);
-            }}
-            onAdd={() => {
-              const first = explorer[0];
-              if (first) void handleAddPassage(first.document);
-            }}
-          />
-
-          <DropOverlay active={isDraggingFile} onFiles={(files) => void handleFiles(files)} />
-        </section>
-
-        {/* The chat */}
-        <div className="hidden min-h-0 flex-col bg-background xl:flex">
+          {explorerPanel}
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel
+          defaultSize="48%"
+          minSize="30%"
+          maxSize="64%"
+          className="min-w-0"
+        >
+          {passagePanel}
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel
+          defaultSize="30%"
+          minSize="22%"
+          maxSize="44%"
+          className="min-w-0 bg-background"
+        >
           {chatPanel}
-        </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_1fr] xl:hidden">
+        <div className="hidden min-h-0 flex-col lg:flex">{explorerPanel}</div>
+        {passagePanel}
       </div>
 
       {embedding.state === "loading" && (
