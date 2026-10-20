@@ -47,6 +47,12 @@ interface LibraryContextValue {
   clearAll: () => Promise<void>;
   /** How the background embedding job is going, if one is running. */
   indexing: { done: number; total: number } | null;
+  /**
+   * Bumped whenever the stored chunks change, so the pages that hold chunks in
+   * memory can reload them. The vectors are written after the import, so an
+   * open folder would otherwise keep searching passages without them.
+   */
+  revision: number;
   getFolder: (folderId: string) => Folder | undefined;
   getDocument: (documentId: string) => DocumentRecord | undefined;
   childFolders: (parentId: string | null) => Folder[];
@@ -77,6 +83,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     done: number;
     total: number;
   } | null>(null);
+  const [revision, setRevision] = React.useState(0);
   const chunkCache = React.useRef(new Map<string, Chunk[]>());
 
   const refresh = React.useCallback(async () => {
@@ -185,6 +192,9 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
         .finally(() => {
           setIndexing(null);
           chunkCache.current.clear();
+          // The vectors are new, so anything holding chunks in memory has to
+          // read them again to be able to search by meaning.
+          setRevision((value) => value + 1);
         });
 
       return result;
@@ -234,6 +244,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       loadChunks,
       clearAll,
       indexing,
+      revision,
       getFolder: (folderId) => folders.find((folder) => folder.id === folderId),
       getDocument: (documentId) =>
         documents.find((document) => document.id === documentId),
@@ -272,6 +283,7 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
       loadChunks,
       clearAll,
       indexing,
+      revision,
     ]
   );
 

@@ -75,6 +75,7 @@ export default function FolderPage() {
   // Load the passages of this folder and of every folder beneath it.
   const folders = library.folders;
   const loadChunks = library.loadChunks;
+  const revision = library.revision;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -89,7 +90,7 @@ export default function FolderPage() {
     return () => {
       cancelled = true;
     };
-  }, [folderId, folders, loadChunks]);
+  }, [folderId, folders, loadChunks, revision]);
 
   const handleAsk = async (question: string) => {
     if (!settings.hasKey) {

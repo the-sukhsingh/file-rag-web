@@ -11,28 +11,26 @@
  * The app stays usable, it just answers with lexical matches only.
  */
 
+/**
+ * The callable shape of the pipeline. The published type describes the class,
+ * but the factory hands back a plain function with the same options.
+ */
+type Extractor = (
+  texts: string | string[],
+  options?: { pooling?: "mean" | "cls"; normalize?: boolean }
+) => Promise<{ data: Float32Array; dims: number[] }>;
+
 export type EmbeddingStatus =
   | { state: "idle" }
   | { state: "loading"; progress: number; message: string }
   | { state: "ready"; model: string; dimensions: number }
   | { state: "unavailable"; reason: string };
 
-export const EMBEDDING_MODEL = "Xenova/all-MiniLM-L6-v2";
+export const EMBEDDING_MODEL = "onnx-community/all-MiniLM-L6-v2-ONNX";
 export const EMBEDDING_DIMENSIONS = 384;
 
-type FeatureExtractor = (
-  input: string | string[],
-  options?: { pooling?: "mean" | "cls"; normalize?: boolean }
-) => Promise<{ data: Float32Array | number[]; dims: number[] }>;
-
-type PipelineFactory = (
-  task: "feature-extraction",
-  model: string,
-  options?: Record<string, unknown>
-) => Promise<FeatureExtractor>;
-
-let pipelinePromise: Promise<FeatureExtractor> | null = null;
-let cachedExtractor: FeatureExtractor | null = null;
+let pipelinePromise: Promise<Extractor> | null = null;
+let cachedExtractor: Extractor | null = null;
 let status: EmbeddingStatus = { state: "idle" };
 
 const listeners = new Set<(status: EmbeddingStatus) => void>();
@@ -60,48 +58,40 @@ export function hasEmbeddings(): boolean {
   return status.state === "ready" && cachedExtractor !== null;
 }
 
-async function loadExtractor(): Promise<FeatureExtractor> {
+async function loadExtractor(): Promise<Extractor> {
   if (cachedExtractor) return cachedExtractor;
 
   if (!pipelinePromise) {
     pipelinePromise = (async () => {
       setStatus({ state: "loading", progress: 0, message: "Fetching the model" });
 
-      const transformers = (await import("@huggingface/transformers")) as unknown as {
-        pipeline: PipelineFactory;
-        env?: { allowLocalModels?: boolean; backends?: Record<string, unknown> };
-      };
+      const { pipeline, env } = await import("@huggingface/transformers");
 
-      // Everything runs locally: no model is pulled from a remote host other
-      // than the model hub itself.
-      if (transformers.env) {
-        transformers.env.allowLocalModels = false;
-        transformers.env.backends = transformers.env.backends ?? {};
-      }
+      // Everything runs locally: the model is fetched once from the hub and
+      // then cached by the browser.
+      env.allowLocalModels = false;
 
-      const extractor = await transformers.pipeline(
-        "feature-extraction",
-        EMBEDDING_MODEL,
-        {
-          dtype: "q8",
-          progress_callback: (info: unknown) => {
-            const payload = info as {
-              status?: string;
-              progress?: number;
-              file?: string;
-            };
-            if (payload.status === "progress" && typeof payload.progress === "number") {
-              setStatus({
-                state: "loading",
-                progress: Math.round(payload.progress),
-                message: `Downloading the model (${Math.round(payload.progress)}%)`,
-              });
-            } else if (payload.status === "done") {
-              setStatus({ state: "loading", progress: 99, message: "Warming up" });
-            }
-          },
-        }
-      );
+      const extractor = (await pipeline("feature-extraction", EMBEDDING_MODEL, {
+        dtype: "q8",
+        progress_callback: (info: unknown) => {
+          const payload = info as {
+            status?: string;
+            progress?: number;
+          };
+          if (
+            payload.status === "progress" &&
+            typeof payload.progress === "number"
+          ) {
+            setStatus({
+              state: "loading",
+              progress: Math.round(payload.progress),
+              message: `Downloading the model (${Math.round(payload.progress)}%)`,
+            });
+          } else if (payload.status === "done") {
+            setStatus({ state: "loading", progress: 99, message: "Warming up" });
+          }
+        },
+      })) as Extractor;
 
       return extractor;
     })().catch((error: unknown) => {
@@ -147,15 +137,16 @@ export async function embedTexts(texts: string[]): Promise<number[][] | null> {
   try {
     const extractor = await loadExtractor();
     const output = await extractor(texts, { pooling: "mean", normalize: true });
+
     const data = output.data;
-    const dims = output.dims ?? [texts.length, EMBEDDING_DIMENSIONS];
+    const width = output.dims[output.dims.length - 1];
 
     const rows: number[][] = [];
     for (let i = 0; i < texts.length; i += 1) {
-      const offset = i * dims[dims.length - 1];
-      const row: number[] = [];
-      for (let j = 0; j < dims[dims.length - 1]; j += 1) {
-        row.push(data[offset + j]);
+      const offset = i * width;
+      const row: number[] = new Array(width);
+      for (let j = 0; j < width; j += 1) {
+        row[j] = data[offset + j];
       }
       rows.push(row);
     }
