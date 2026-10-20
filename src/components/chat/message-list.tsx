@@ -17,7 +17,7 @@ import rehypeKatex from "rehype-katex";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
-import { normalizeLatexDelimiters } from "@/lib/chat/remark-latex";
+import { normalizeCitations, normalizeLatexDelimiters } from "@/lib/chat/remark-latex";
 import type { ChatMessage, TraceStep } from "@/lib/library/types";
 
 import "katex/dist/katex.min.css";
@@ -103,7 +103,7 @@ function MessageBubble({
         <>
           <div className="prose prose-sm max-w-none break-words text-[14px] leading-[1.65] text-charcoal prose-headings:mt-4 prose-headings:mb-2 prose-headings:text-[16px] prose-headings:font-semibold prose-headings:text-charcoal prose-p:my-2.5 prose-ul:my-2.5 prose-ol:my-2.5 prose-li:my-1 prose-li:pl-1 prose-strong:font-semibold prose-strong:text-charcoal prose-code:rounded-[5px] prose-code:bg-stone-mist/70 prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-[12.5px] prose-code:font-normal prose-pre:rounded-[12px] prose-pre:border prose-pre:border-stone-mist prose-pre:bg-warm-bone prose-pre:p-4 prose-blockquote:border-l-2 prose-blockquote:border-stone-mist prose-blockquote:pl-3 prose-blockquote:text-bark-grey prose-a:text-sapphire-link">
             <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-              {normalizeLatexDelimiters(message.content)}
+              {normalizeLatexDelimiters(normalizeCitations(message.content))}
             </Markdown>
           </div>
 

@@ -1,4 +1,5 @@
 import type { Chunk, RetrievedChunk, TraceStep } from "@/lib/library/types";
+import { normalizeCitations } from "@/lib/chat/remark-latex";
 import { renderContext, searchChunks } from "@/lib/retrieval/search";
 import {
   SHELL_INSTRUCTIONS,
@@ -72,8 +73,10 @@ const ANSWER_SYSTEM = [
   "- Use only what the passages and files say. Never invent facts, numbers or",
   "  names.",
   "- Cite every passage you used with its bracketed number, like [1] or [2].",
-  "  Cite only the passages you actually used - a passage you did not use",
-  "  must not be cited.",
+  "  The numbers are the ones in front of the passages you were given - the",
+  "  passages are labelled 1, 2, 3 and so on.",
+  "- Never cite a line number from a command's output. A citation is always a",
+  "  passage number, never something like [1:4].",
   "- If the passages do not answer the question, say so directly and suggest",
   "  what to ask instead.",
   "- If no passage matched at all, say that the folder does not seem to cover",
@@ -165,10 +168,12 @@ export function extractCitedChunks(
 ): string[] {
   const cited = new Set<string>();
 
-  // The markers are `[1]`, but the model sometimes writes `[1, 2]` or `[1][2]`.
+  // The markers are `[1]`, but the model sometimes writes `[1, 2]` or `[1][2]`,
+  // and it sometimes uses the full-width brackets `【1】` instead. The markers
+  // are normalised first, so one shape is matched.
   const pattern = /\[(\d+(?:\s*[,;]\s*\d+)*)\]/g;
 
-  for (const match of answer.matchAll(pattern)) {
+  for (const match of normalizeCitations(answer).matchAll(pattern)) {
     for (const part of match[1].split(/[,;]/)) {
       const index = Number.parseInt(part.trim(), 10);
       if (Number.isNaN(index)) continue;

@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import { normalizeLatexDelimiters } from "@/lib/chat/remark-latex";
+import {
+  normalizeCitations,
+  normalizeLatexDelimiters,
+} from "@/lib/chat/remark-latex";
 
 describe("normalizeLatexDelimiters", () => {
   it("turns a display formula into a dollar block", () => {
@@ -40,5 +43,33 @@ describe("normalizeLatexDelimiters", () => {
     expect(normalizeLatexDelimiters("\\[\\frac{1}{13}\\]")).toBe(
       "$$\\frac{1}{13}$$"
     );
+  });
+});
+
+describe("normalizeCitations", () => {
+  it("leaves a plain marker alone", () => {
+    expect(normalizeCitations("the answer is [1] here")).toBe(
+      "the answer is [1] here"
+    );
+  });
+
+  it("rewrites the full-width brackets", () => {
+    expect(normalizeCitations("the answer is 【1】 here")).toBe(
+      "the answer is [1] here"
+    );
+  });
+
+  it("drops a line reference from a command output", () => {
+    expect(normalizeCitations("as shown in 【1†L4】")).toBe(
+      "as shown in [1]"
+    );
+  });
+
+  it("drops a colon line reference", () => {
+    expect(normalizeCitations("as shown in [1:4]")).toBe("as shown in [1]");
+  });
+
+  it("rewrites several full-width markers at once", () => {
+    expect(normalizeCitations("see 【1, 2】")).toBe("see [1, 2]");
   });
 });
