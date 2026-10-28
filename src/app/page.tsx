@@ -1,773 +1,334 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import {
-  ArrowRightIcon,
-  FileTextIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  LayersIcon,
-  MessageSquareIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  SearchIcon,
-  Trash2Icon,
-  UploadIcon,
-} from "lucide-react";
-import { cn } from "cn";
+import { ArrowUpRightIcon, FileTextIcon, FilesIcon, PanelLeftIcon, PlusIcon, UploadIcon } from "lucide-react";
 
+import { MessageList } from "@/components/chat/message-list";
+import { PromptBox } from "@/components/chat/prompt-box";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
-import { ProgressPopup } from "@/components/layout/progress-popup";
-import { ShowcaseCard } from "@/components/layout/showcase-card";
-import { TopNav } from "@/components/layout/top-nav";
-import { ImportPdfDialog } from "@/components/library/import-pdf-dialog";
-import { documentsInFolder } from "@/components/library/library-tree";
-import { MovePicker } from "@/components/library/move-picker";
+import { FileSidebar, type UploadState } from "@/components/library/file-sidebar";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import type { Folder } from "@/lib/library/types";
-import { onEmbeddingStatus } from "@/lib/retrieval/embeddings";
-import { pluralize } from "@/lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
+import { createMessageId, now } from "@/lib/chat/ids";
+import { runAgent } from "@/lib/groq/agent";
+import { listChunksByDocument } from "@/lib/library/store";
+import type { ChatMessage, Chunk, DocumentRecord } from "@/lib/library/types";
 
-/**
- * The library.
- *
- * The folders are the front door: each one is a card that says what is in it
- * and where to go next. Managing a folder happens on its own page, so the
- * dashboard only has to answer one question - which folder do I want?
- */
-export default function LibraryDashboard() {
-  const router = useRouter();
+const suggestions = [
+  { label: "Give me a summary", question: "Give me a clear, concise summary of the selected files, citing the sources." },
+  { label: "Find key takeaways", question: "What are the most important takeaways from the selected files? Cite the sources." },
+  { label: "Compare my files", question: "Compare the selected files. Where do they agree and differ? Cite the sources." },
+];
+
+type SourcePreview = { title: string; documentId: string; chunks: Chunk[] | null; error?: string };
+
+export default function WorkspacePage() {
   const library = useLibrary();
   const settings = useSettings();
-
-  const [search, setSearch] = React.useState("");
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [excludedIds, setExcludedIds] = React.useState(new Set<string>());
+  const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  const [isImportOpen, setIsImportOpen] = React.useState(false);
-  const [isNewFolderOpen, setIsNewFolderOpen] = React.useState(false);
-  const [newFolderName, setNewFolderName] = React.useState("");
-  const [newFolderParent, setNewFolderParent] = React.useState<string | null>(null);
-  const [folderToRename, setFolderToRename] = React.useState<Folder | null>(null);
-  const [renameValue, setRenameValue] = React.useState("");
-  const [folderToDelete, setFolderToDelete] = React.useState<Folder | null>(null);
-  const [folderToMove, setFolderToMove] = React.useState<Folder | null>(null);
-  const [embedding, setEmbedding] = React.useState<{
-    state: string;
-    message?: string;
-    percent?: number;
-  }>({ state: "idle" });
+  const [isFilesOpen, setIsFilesOpen] = React.useState(false);
+  const [upload, setUpload] = React.useState<UploadState | null>(null);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = React.useState<DocumentRecord | null>(null);
+  const [isRemoving, setIsRemoving] = React.useState(false);
+  const [removalError, setRemovalError] = React.useState<string | null>(null);
+  const [source, setSource] = React.useState<SourcePreview | null>(null);
+  const [dragging, setDragging] = React.useState(false);
+  const [chatVersion, setChatVersion] = React.useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
+  const uploadingRef = React.useRef(false);
+  const sourcesRef = React.useRef(new Map<string, { chunk: Chunk; name: string }>());
 
-  React.useEffect(
-    () =>
-      onEmbeddingStatus((next) =>
-        setEmbedding({
-          state: next.state,
-          message: next.state === "loading" ? next.message : undefined,
-          percent: next.state === "loading" ? next.progress : undefined,
-        })
-      ),
-    []
-  );
+  React.useEffect(() => () => abortRef.current?.abort(), []);
 
-  /**
-   * The top level of the library. A folder that sits inside another one is
-   * reached through its parent, so the root is what the dashboard lists.
-   */
-  const rootFolders = React.useMemo(
-    () =>
-      library.folders
-        .filter((folder) => folder.parentId === null)
-        .filter((folder) => {
-          const query = search.trim().toLowerCase();
-          if (!query) return true;
-          return (
-            folder.name.toLowerCase().includes(query) ||
-            folder.path.toLowerCase().includes(query)
-          );
-        })
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
-    [library.folders, search]
-  );
+  const selectedDocuments = library.documents.filter((document) => !excludedIds.has(document.id));
+  const hasReadableFiles = selectedDocuments.some((document) => document.chunkCount > 0);
+  const locked = isBusy || isRemoving;
 
-  /**
-   * The documents that sit at the library root, with no folder of their own.
-   */
-  const rootDocuments = React.useMemo(
-    () => documentsInFolder(null, library.folders, library.documents),
-    [library.folders, library.documents]
-  );
-
-  const stats = React.useMemo(() => {
-    const chunks = library.documents.reduce(
-      (total, document) => total + document.chunkCount,
-      0
-    );
-    const pages = library.documents.reduce(
-      (total, document) => total + document.pageCount,
-      0
-    );
-    return {
-      folders: library.folders.length,
-      documents: library.documents.length,
-      chunks,
-      pages,
-    };
-  }, [library.folders, library.documents]);
-
-  const handleImport = async (
-    file: File,
-    onProgress: (message: string, percent: number) => void
-  ) => {
-    const result = await library.importPdf(
-      file,
-      newFolderParent ?? null,
-      onProgress
-    );
-    return result;
+  const handleFiles = async (files: File[]) => {
+    if (uploadingRef.current || locked || !files.length) return;
+    uploadingRef.current = true;
+    setUploadError(null);
+    const errors: string[] = [];
+    try {
+      for (const [index, file] of files.entries()) {
+        if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+          errors.push(`${file.name}: please choose a PDF file.`);
+          continue;
+        }
+        if (file.size > 50 * 1024 * 1024) {
+          errors.push(`${file.name}: this file is larger than 50 MB.`);
+          continue;
+        }
+        setUpload({ name: file.name, percent: 0, position: index + 1, total: files.length });
+        try {
+          const result = await library.importPdf(file, null, (_message, percent) => {
+            setUpload({ name: file.name, percent: Math.min(percent, 95), position: index + 1, total: files.length });
+          });
+          if (!result.chunks.length) {
+            errors.push(`${file.name}: no readable text was found. Try a text-based PDF instead of a scanned image.`);
+          }
+        } catch (error) {
+          errors.push(`${file.name}: ${error instanceof Error ? error.message : "Could not import this file. Please try again."}`);
+        }
+      }
+    } finally {
+      uploadingRef.current = false;
+      setUpload(null);
+      setUploadError(errors.length ? errors.join("\n") : null);
+    }
   };
 
+  const handleAsk = async (question: string) => {
+    if (abortRef.current || !hasReadableFiles || isRemoving) return;
+    if (!settings.hasKey) {
+      setIsSettingsOpen(true);
+      return;
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const assistantId = createMessageId();
+    const userMessage: ChatMessage = { id: createMessageId(), role: "user", content: question, createdAt: now() };
+    setMessages((previous) => [...previous, userMessage, { id: assistantId, role: "assistant", content: "", trace: [], createdAt: now() }]);
+    setIsBusy(true);
+
+    const patch = (update: (message: ChatMessage) => ChatMessage) => {
+      if (abortRef.current !== controller) return;
+      setMessages((previous) => previous.map((message) => message.id === assistantId ? update(message) : message));
+    };
+
+    try {
+      const groups = await Promise.all(selectedDocuments.map((document) => listChunksByDocument(document.id)));
+      if (controller.signal.aborted) return;
+      const chunks = groups.flat();
+      if (!chunks.length) throw new Error("These files have no readable text. Please add a text-based PDF.");
+      const documentNames = new Map(selectedDocuments.map((document) => [document.id, document.fileName]));
+      for (const chunk of chunks) sourcesRef.current.set(chunk.id, { chunk, name: documentNames.get(chunk.documentId) ?? "Source" });
+      await runAgent(
+        {
+          question,
+          folderName: "selected files",
+          chunks,
+          documentNames,
+          history: messages.filter((message) => message.content).map(({ role, content }) => ({ role, content })),
+          apiKey: settings.apiKey,
+          model: settings.model,
+          signal: controller.signal,
+        },
+        {
+          onTrace: (step) => patch((message) => {
+            const trace = message.trace ?? [];
+            return { ...message, trace: trace.some((entry) => entry.id === step.id) ? trace.map((entry) => entry.id === step.id ? step : entry) : [...trace, step] };
+          }),
+          onText: (delta) => patch((message) => ({ ...message, content: message.content + delta })),
+          onCitations: (citations) => patch((message) => ({ ...message, citations })),
+        }
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const reason = error instanceof Error ? error.message : "Please try again.";
+        patch((message) => ({ ...message, content: `${message.content ? `${message.content}\n\n` : ""}I couldn’t complete that answer. ${reason}` }));
+      }
+    } finally {
+      patch((message) => ({
+        ...message,
+        content: message.content || (controller.signal.aborted ? "Response stopped." : "No answer was returned. Please try again."),
+        trace: message.trace?.map((step) => step.state === "running" ? { ...step, state: "failed" } : step),
+      }));
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setIsBusy(false);
+      }
+    }
+  };
+
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
+  const handlePreview = async (document: DocumentRecord) => {
+    setIsFilesOpen(false);
+    setSource({ title: document.fileName, documentId: document.id, chunks: null });
+    try {
+      const chunks = await listChunksByDocument(document.id);
+      chunks.sort((a, b) => (a.startPage ?? 0) - (b.startPage ?? 0) || a.index - b.index);
+      setSource((previous) => previous?.documentId === document.id ? { ...previous, chunks } : previous);
+    } catch {
+      setSource((previous) => previous?.documentId === document.id ? { ...previous, chunks: [], error: "Could not load this file. Please try again." } : previous);
+    }
+  };
+
+  const handleCite = (chunkId: string) => {
+    const entry = sourcesRef.current.get(chunkId);
+    if (entry) setSource({ title: entry.name, documentId: entry.chunk.documentId, chunks: [entry.chunk] });
+  };
+
+  const handleRemove = async () => {
+    if (!pendingRemoval || isRemoving) return;
+    setIsRemoving(true);
+    setRemovalError(null);
+    try {
+      await library.removeDocument(pendingRemoval.id);
+      setExcludedIds((previous) => {
+        const next = new Set(previous);
+        next.delete(pendingRemoval.id);
+        return next;
+      });
+      setPendingRemoval(null);
+    } catch {
+      setRemovalError("The file could not be removed. Please try again.");
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const sidebar = (
+    <FileSidebar
+      documents={library.documents}
+      ready={library.ready}
+      excludedIds={excludedIds}
+      onToggle={(id) => setExcludedIds((previous) => {
+        const next = new Set(previous);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      })}
+      onSelectAll={() => setExcludedIds(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
+      onPreview={(document) => void handlePreview(document)}
+      onRemove={(document) => { setIsFilesOpen(false); setRemovalError(null); setPendingRemoval(document); }}
+      onPickFiles={() => inputRef.current?.click()}
+      onFiles={(files) => void handleFiles(files)}
+      upload={upload}
+      error={uploadError}
+      onDismissError={() => setUploadError(null)}
+      disabled={locked}
+      indexing={library.indexing}
+      onOpenSettings={() => { setIsFilesOpen(false); setIsSettingsOpen(true); }}
+    />
+  );
+
   return (
-    <div className="min-h-dvh bg-background">
-      <TopNav
-        active="library"
-        hasKey={settings.hasKey}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onNewFolder={() => {
-          setNewFolderParent(null);
-          setNewFolderName("");
-          setIsNewFolderOpen(true);
-        }}
-      />
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-background">
+      <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple hidden aria-label="Upload PDF files" onChange={(event) => { void handleFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+      <div className="hidden w-[284px] shrink-0 border-r border-border/80 md:block lg:w-[300px]">{sidebar}</div>
 
-      <main className="mx-auto w-full max-w-[1200px] px-6 pb-24">
-        {/* ---- Hero ------------------------------------------------- */}
-        <section className="flex flex-col items-center py-16 text-center">
-          <p className="eyebrow">A private library for your documents</p>
-          <h1 className="display-face mt-6 max-w-[16ch] text-[clamp(40px,7vw,80px)] text-charcoal">
-            Ask your documents{" "}
-            <em className="italic text-electric-indigo">anything</em>
-          </h1>
-          <p className="mt-6 max-w-[46ch] text-[18px] leading-[1.56] text-bark-grey">
-            Import a PDF. It is split into chapters and passages, indexed in
-            your browser, and ready to answer questions - with your own API key.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-            <Button
-              onClick={() => {
-                setNewFolderParent(null);
-                setNewFolderName("");
-                setIsNewFolderOpen(true);
-              }}
-              variant="outline"
-              className="h-11 rounded-[8px] border-stone-mist px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-charcoal hover:border-charcoal"
-            >
-              <FolderPlusIcon className="size-4" />
-              New folder
-            </Button>
-            <Button
-              onClick={() => {
-                setNewFolderParent(null);
-                setIsImportOpen(true);
-              }}
-              className="h-11 rounded-[8px] bg-electric-indigo px-6 text-[14px] font-semibold uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
-            >
-              <UploadIcon className="size-4" />
-              Import PDF
-            </Button>
-          </div>
-        </section>
-
-        {/* ---- Stats bar -------------------------------------------- */}
-        <section className="grid grid-cols-2 border-y border-stone-mist bg-paper-white md:grid-cols-4">
-          {[
-            { value: stats.folders, label: "Folders" },
-            { value: stats.documents, label: "Documents" },
-            { value: stats.chunks, label: "Passages indexed" },
-            { value: stats.pages, label: "Pages read" },
-          ].map((stat, index) => (
-            <div
-              key={stat.label}
-              className={cn(
-                "flex flex-col items-center gap-1 px-4 py-6 text-center",
-                index > 0 && "border-l border-stone-mist"
-              )}
-            >
-              <span className="font-numeric text-[24px] leading-[1.33] text-charcoal">
-                {stat.value}
-              </span>
-              <span className="text-[12px] text-bark-grey">{stat.label}</span>
+      <main
+        id="chat"
+        aria-label="Document chat"
+        className="relative flex min-w-0 flex-1 flex-col"
+        onDragEnter={(event) => { if (event.dataTransfer.types.includes("Files")) setDragging(true); }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
+        onDrop={(event) => { event.preventDefault(); setDragging(false); void handleFiles(Array.from(event.dataTransfer.files)); }}
+      >
+        <header className="flex h-20 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <Sheet open={isFilesOpen} onOpenChange={setIsFilesOpen}>
+              <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open files"><PanelLeftIcon className="size-4" /></Button>} />
+              <SheetContent side="left" className="gap-0 data-[side=left]:w-[min(320px,90vw)]">
+                <SheetTitle className="sr-only">Your files</SheetTitle>
+                <SheetDescription className="sr-only">Upload and select the files to use in your conversation.</SheetDescription>
+                {sidebar}
+              </SheetContent>
+            </Sheet>
+            <div>
+              <h1 className="text-[14px] font-medium">Chat</h1>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">A little space to understand more.</p>
             </div>
-          ))}
-        </section>
+          </div>
+          <Button variant="ghost" disabled={isBusy || messages.length === 0} onClick={() => { setMessages([]); sourcesRef.current.clear(); setChatVersion((value) => value + 1); }} className="h-9 gap-2 px-3 text-[12px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
+        </header>
 
-        {/* ---- The folders ------------------------------------------ */}
-        <section className="mt-20">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="flex flex-col gap-1.5">
-              <h2 className="text-[20px] font-semibold text-charcoal">
-                Your folders
-              </h2>
-              <p className="text-[14px] text-bark-grey">
-                A folder is a set of documents you can ask questions of.
+        {messages.length > 0 ? (
+          <MessageList messages={messages} onCite={handleCite} />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8 sm:px-10">
+            <div className="workspace-enter my-auto w-full max-w-[640px] text-center">
+              <span className="mx-auto mb-7 flex size-12 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 text-primary"><FilesIcon className="size-5" strokeWidth={1.4} /></span>
+              <p className="mb-4 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase">Less searching. More understanding.</p>
+              <h2 className="display-face text-[32px] text-foreground sm:text-[44px]">Your documents.<br /><span className="text-primary italic">A clearer perspective.</span></h2>
+              <p className="mx-auto mt-5 max-w-[360px] text-[13px] leading-6 text-muted-foreground">
+                {library.documents.length === 0
+                  ? "Add your files, ask a question, and get to what matters. Every answer, connected to its source."
+                  : selectedDocuments.length === 0
+                    ? "Select a file in the sidebar to bring it into the conversation."
+                    : "Summarize the details, connect the ideas, or find that one thing you’re looking for."}
               </p>
-            </div>
-
-            {library.folders.length > 0 && (
-              <div className="relative w-full sm:w-64">
-                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-pebble" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Find a folder"
-                  className="h-9 rounded-[10px] pl-8 text-[13px]"
-                />
-              </div>
-            )}
-          </div>
-
-          {rootFolders.length === 0 && rootDocuments.length === 0 ? (
-            <div className="mt-6 flex flex-col items-center gap-4 rounded-[16px] border border-dashed border-stone-mist bg-paper-white px-6 py-20 text-center">
-              <span className="flex size-12 items-center justify-center rounded-[16px] bg-warm-bone text-bark-grey">
-                <FolderIcon className="size-6" />
-              </span>
-              <div className="flex flex-col gap-1.5">
-                <h3 className="text-[16px] font-semibold text-charcoal">
-                  {search ? "No folder matches that search" : "No folders yet"}
-                </h3>
-                <p className="max-w-[40ch] text-[14px] leading-[1.5] text-bark-grey">
-                  {search
-                    ? "Try a different name, or clear the search."
-                    : "Create a folder, then import a PDF into it. The folder becomes the thing you chat with."}
-                </p>
-              </div>
-              {!search && (
-                <Button
-                  onClick={() => {
-                    setNewFolderParent(null);
-                    setNewFolderName("");
-                    setIsNewFolderOpen(true);
-                  }}
-                  className="mt-1 h-10 rounded-[8px] bg-electric-indigo px-5 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
-                >
-                  <FolderPlusIcon className="size-4" />
-                  New folder
-                </Button>
+              {library.documents.length === 0 ? (
+                <Button onClick={() => inputRef.current?.click()} disabled={!library.ready || !!upload} variant="outline" className="mt-7 h-10 gap-2 rounded-lg border-primary/20 bg-transparent px-4 text-[12px] font-medium text-primary hover:bg-primary/5"><PlusIcon className="size-3.5" /> Add your first file</Button>
+              ) : (
+                <div className="mt-8 flex flex-wrap justify-center gap-2">
+                  {suggestions.map((suggestion, index) => (
+                    <button key={suggestion.label} type="button" disabled={!hasReadableFiles || isRemoving || (index === 2 && selectedDocuments.length < 2)} onClick={() => void handleAsk(suggestion.question)} className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-2.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">{suggestion.label}<ArrowUpRightIcon className="size-3" /></button>
+                  ))}
+                </div>
               )}
             </div>
-          ) : (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {rootFolders.map((folder) => {
-                const summary = library.summaries.get(folder.id);
-                const documentCount = summary?.documentCount ?? 0;
-                const passageCount = summary?.passageCount ?? 0;
-                const childCount = summary?.childCount ?? 0;
-
-                return (
-                  <article
-                    key={folder.id}
-                    className="group flex flex-col rounded-[16px] border border-stone-mist bg-paper-white transition-colors hover:border-electric-indigo/30"
-                  >
-                    <div className="flex items-start gap-3 p-5 pb-4">
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-warm-bone text-electric-indigo">
-                        <FolderIcon className="size-4.5" />
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/folder/${folder.id}`)}
-                        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
-                      >
-                        <span className="w-full truncate text-[16px] font-semibold text-charcoal">
-                          {folder.name}
-                        </span>
-                        <span className="font-mono text-[11px] text-bark-grey">
-                          {documentCount > 0
-                            ? `${pluralize(documentCount, "document")} · ${pluralize(passageCount, "passage")}`
-                            : "Empty"}
-                        </span>
-                      </button>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={`Actions for ${folder.name}`}
-                              className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-pebble opacity-0 transition-opacity hover:bg-stone-mist/60 hover:text-charcoal focus-visible:opacity-100 group-hover:opacity-100"
-                            >
-                              <MoreHorizontalIcon className="size-4" />
-                            </button>
-                          }
-                        />
-                        <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/folder/${folder.id}`)}
-                          >
-                            <FolderIcon className="mr-2 size-3.5" />
-                            Open folder
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setNewFolderParent(folder.id);
-                              setNewFolderName("");
-                              setIsNewFolderOpen(true);
-                            }}
-                          >
-                            <FolderPlusIcon className="mr-2 size-3.5" />
-                            New sub-folder
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setFolderToMove(folder)}>
-                            <ArrowRightIcon className="mr-2 size-3.5" />
-                            Move
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setFolderToRename(folder);
-                              setRenameValue(folder.name);
-                            }}
-                          >
-                            <PencilIcon className="mr-2 size-3.5" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setFolderToDelete(folder)}
-                          >
-                            <Trash2Icon className="mr-2 size-3.5" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    <div className="mt-auto flex items-center gap-2 border-t border-stone-mist px-5 py-3">
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => router.push(`/folder/${folder.id}`)}
-                        className="h-7 gap-1 px-1.5 font-mono text-[10px] uppercase tracking-[0.04em] text-bark-grey hover:text-charcoal"
-                      >
-                        Manage
-                      </Button>
-
-                      {childCount > 0 && (
-                        <span className="font-mono text-[10px] text-pebble">
-                          {pluralize(childCount, "sub-folder")}
-                        </span>
-                      )}
-
-                      <Button
-                        size="xs"
-                        onClick={() => router.push(`/folder/${folder.id}`)}
-                        disabled={passageCount === 0}
-                        className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet disabled:opacity-40"
-                      >
-                        <MessageSquareIcon className="size-3" />
-                        Ask
-                      </Button>
-                    </div>
-                  </article>
-                );
-              })}
-
-              {/* The documents that sit at the root of the library. */}
-              {rootDocuments.map((document) => (
-                <article
-                  key={document.id}
-                  className="group flex flex-col rounded-[16px] border border-stone-mist bg-paper-white transition-colors hover:border-electric-indigo/30"
-                >
-                  <div className="flex items-start gap-3 p-5 pb-4">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-warm-bone text-bark-grey">
-                      <FileTextIcon className="size-4.5" />
-                    </span>
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate text-[16px] font-semibold text-charcoal">
-                        {document.name}
-                      </span>
-                      <span className="font-mono text-[11px] text-bark-grey">
-                        {pluralize(document.chunkCount, "passage")} ·{" "}
-                        {pluralize(document.pageCount, "page")}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto flex items-center gap-2 border-t border-stone-mist px-5 py-3">
-                    <span className="font-mono text-[10px] text-pebble">
-                      At the library root
-                    </span>
-                      <Button
-                        size="xs"
-                        onClick={() =>
-                          router.push(
-                            `/folder/${library.documentLocation(document.id).documentFolder?.id ?? ""}`
-                          )
-                        }
-                        className="ml-auto h-7 gap-1 rounded-[7px] bg-electric-indigo px-2.5 font-mono text-[10px] uppercase tracking-[0.04em] text-primary-foreground hover:bg-deep-violet"
-                      >
-                      <MessageSquareIcon className="size-3" />
-                      Ask
-                    </Button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* ---- Product showcase --------------------------------------- */}
-        <section className="mt-20">
-          <ShowcaseCard />
-        </section>
-
-        {/* ---- Feature cards ----------------------------------------- */}
-        <section className="mt-20">
-          <p className="eyebrow text-center">
-            Everything stays on your machine
-          </p>
-          <div className="mt-6 grid gap-6 md:grid-cols-3">
-            {[
-              {
-                title: "Parsed in the browser",
-                body: "PDF.js reads the file on your device and splits it into chapter folders of overlapping passages.",
-                icon: LayersIcon,
-              },
-              {
-                title: "Hybrid retrieval",
-                body: "BM25 finds the exact terms you typed. A local embedding model finds the passages that mean the right thing.",
-                icon: SearchIcon,
-              },
-              {
-                title: "Your key, your calls",
-                body: "The Groq key is stored on your device and used only to call Groq. There is no server between you and the model.",
-                icon: FileTextIcon,
-              },
-            ].map((feature) => (
-              <article
-                key={feature.title}
-                className="flex flex-col gap-3 rounded-[8px] border border-stone-mist bg-paper-white p-6"
-              >
-                <feature.icon className="size-5 text-electric-indigo" />
-                <h3 className="text-[18px] font-semibold text-charcoal">
-                  {feature.title}
-                </h3>
-                <p className="text-[14px] leading-[1.43] text-bark-grey">
-                  {feature.body}
-                </p>
-                <div className="mt-auto border-t border-stone-mist pt-3">
-                  <span className="tag-label text-charcoal">
-                    Learn more <ArrowRightIcon className="inline size-3" />
-                  </span>
-                </div>
-              </article>
-            ))}
           </div>
-        </section>
+        )}
+
+        {!settings.hasKey && library.documents.length > 0 && (
+          <div className="mx-auto flex w-full max-w-[824px] shrink-0 items-center justify-between gap-4 px-4 pt-2 sm:px-8">
+            <p className="text-[12px] text-muted-foreground">Connect your Groq API key to start chatting.</p>
+            <button type="button" onClick={() => setIsSettingsOpen(true)} className="shrink-0 rounded-md py-2 text-[12px] font-medium text-primary hover:underline">Connect AI <span aria-hidden="true">↗</span></button>
+          </div>
+        )}
+        <PromptBox
+          key={chatVersion}
+          onSubmit={(text) => void handleAsk(text)}
+          onStop={handleStop}
+          isBusy={isBusy}
+          disabled={!library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
+          placeholder={!library.documents.length ? "Your next insight starts with a file…" : !selectedDocuments.length ? "Select a file to start a conversation…" : !hasReadableFiles ? "Add a PDF with readable text to chat…" : !settings.hasKey ? "Connect AI to ask your first question…" : "Ask anything about your files…"}
+        >
+          <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
+          <span>{selectedDocuments.length ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in this conversation` : "No files selected"}</span>
+          <span className="ml-auto hidden text-[10px] text-muted-foreground/80 sm:inline">Enter to send <span className="mx-1.5">·</span> Shift + Enter for a new line</span>
+        </PromptBox>
+
+        {dragging && !locked && !upload && (
+          <div className="pointer-events-none absolute inset-3 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-background/95 text-primary"><UploadIcon className="size-7" /><p className="text-sm font-medium">Drop your PDFs here</p><p className="text-xs text-muted-foreground">Up to 50 MB per file</p></div>
+        )}
       </main>
 
-      {/* ---- Dialogs ------------------------------------------------ */}
-      <SettingsDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-      />
-
-      <ImportPdfDialog
-        open={isImportOpen}
-        onOpenChange={setIsImportOpen}
-        folderName={
-          newFolderParent
-            ? library.getFolder(newFolderParent)?.name ?? "the library"
-            : "the library"
-        }
-        onImport={handleImport}
-      />
-
-      <Dialog open={isNewFolderOpen} onOpenChange={setIsNewFolderOpen}>
-        <DialogContent className="sm:max-w-md">
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const name = newFolderName.trim();
-              if (!name) return;
-              const folder = await library.createFolder(
-                name,
-                newFolderParent ?? null
-              );
-              setNewFolderName("");
-              setIsNewFolderOpen(false);
-              router.push(`/folder/${folder.id}`);
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle className="font-display text-[24px] font-normal">
-                New folder
-              </DialogTitle>
-              <DialogDescription>
-                A folder holds documents, and is the unit you chat with.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-2 py-4">
-              <Label htmlFor="folder-name" className="text-[13px] font-medium">
-                Name
-              </Label>
-              <Input
-                id="folder-name"
-                autoFocus
-                required
-                value={newFolderName}
-                onChange={(event) => setNewFolderName(event.target.value)}
-                placeholder="e.g. Research papers"
-                className="h-10 rounded-[12px]"
-              />
-              {newFolderParent && (
-                <p className="text-[12px] text-bark-grey">
-                  Inside {library.getFolder(newFolderParent)?.name}
-                </p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsNewFolderOpen(false)}
-                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
-              >
-                Create folder
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(folderToRename)}
-        onOpenChange={(open) => !open && setFolderToRename(null)}
-      >
-        <DialogContent className="sm:max-w-md">
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (!folderToRename) return;
-              const name = renameValue.trim();
-              if (!name) return;
-              await library.renameFolder(folderToRename.id, name);
-              setFolderToRename(null);
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle className="font-display text-[24px] font-normal">
-                Rename folder
-              </DialogTitle>
-              <DialogDescription>
-                The documents and passages inside are kept.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-2 py-4">
-              <Label htmlFor="rename-folder" className="text-[13px] font-medium">
-                Name
-              </Label>
-              <Input
-                id="rename-folder"
-                autoFocus
-                required
-                value={renameValue}
-                onChange={(event) => setRenameValue(event.target.value)}
-                className="h-10 rounded-[12px]"
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setFolderToRename(null)}
-                className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
-              >
-                Rename
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={Boolean(folderToMove)}
-        onOpenChange={(open) => !open && setFolderToMove(null)}
-      >
-        <DialogContent className="sm:max-w-md">
+      <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      <Dialog open={!!pendingRemoval} onOpenChange={(open) => { if (!open && !isRemoving) setPendingRemoval(null); }}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display text-[24px] font-normal">
-              Move folder
-            </DialogTitle>
-            <DialogDescription>
-              Choose where {folderToMove?.name} should live. Everything inside
-              it moves too.
-            </DialogDescription>
+            <DialogTitle>Remove this file?</DialogTitle>
+            <DialogDescription className="break-words">“{pendingRemoval?.fileName}” and its extracted text will be removed from this browser. Your original PDF is not affected.</DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <MovePicker
-              folders={library.folders}
-              documents={library.documents}
-              summaries={library.summaries}
-              currentFolderId={folderToMove?.id}
-              excludeIds={
-                folderToMove
-                  ? [
-                      folderToMove.id,
-                      ...descendantIds(folderToMove.id, library.folders),
-                    ]
-                  : []
-              }
-              onPick={(targetId) => {
-                if (!folderToMove) return;
-                void library.moveFolderTo(
-                  folderToMove.id,
-                  targetId === "" ? null : targetId
-                );
-                setFolderToMove(null);
-              }}
-            />
-          </div>
+          {removalError && <p role="alert" className="text-sm text-destructive">{removalError}</p>}
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setFolderToMove(null)}
-              className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
-            >
-              Cancel
-            </Button>
+            <Button variant="outline" disabled={isRemoving} onClick={() => setPendingRemoval(null)}>Keep file</Button>
+            <Button variant="destructive" disabled={isRemoving} onClick={() => void handleRemove()}>{isRemoving && <Spinner className="size-3.5" />} Remove file</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog
-        open={Boolean(folderToDelete)}
-        onOpenChange={(open) => !open && setFolderToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete &quot;{folderToDelete?.name}&quot;?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {folderToDelete &&
-                describeContents(library.contentsOf(folderToDelete.id))}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setFolderToDelete(null)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={async () => {
-                if (!folderToDelete) return;
-                await library.removeFolder(folderToDelete.id);
-                setFolderToDelete(null);
-              }}
-            >
-              Delete folder
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {embedding.state === "loading" && (
-        <ProgressPopup
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
-          label={embedding.message ?? "Preparing the embedding model"}
-          percent={embedding.percent}
-        />
-      )}
+      <Dialog open={!!source} onOpenChange={(open) => { if (!open) setSource(null); }}>
+        <DialogContent className="flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="shrink-0 border-b border-border px-6 py-5 pr-12">
+            <div className="mb-2 flex items-center gap-2 text-[11px] text-primary"><FileTextIcon className="size-3.5" /> Source text</div>
+            <DialogTitle className="break-words text-base leading-6">{source?.title}</DialogTitle>
+            <DialogDescription className="text-xs">Extracted from your PDF. Passages may overlap to preserve context.</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            {source?.chunks === null ? <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner className="size-4" /> Loading source…</div> : source?.error ? <p role="alert" className="text-sm text-destructive">{source.error}</p> : source?.chunks.length === 0 ? <p className="text-sm text-muted-foreground">No readable text was found. Try a text-based PDF; scanned images are not supported.</p> : source?.chunks.map((chunk) => (
+              <article key={chunk.id} className="border-b border-border py-5 first:pt-0 last:border-0 last:pb-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><span className="font-medium text-primary">{chunk.startPage ? `Page ${chunk.startPage}${chunk.endPage && chunk.endPage !== chunk.startPage ? `–${chunk.endPage}` : ""}` : "Passage"}</span><span aria-hidden="true">·</span><span>{chunk.section}</span></div>
+                <p className="whitespace-pre-wrap text-sm leading-7 [overflow-wrap:anywhere]">{chunk.text}</p>
+              </article>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}
-
-/**
- * The ids of a folder's descendants, so a folder is never moved inside
- * itself.
- */
-function descendantIds(folderId: string, folders: Folder[]): string[] {
-  const all = new Set<string>([folderId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const folder of folders) {
-      if (
-        folder.parentId &&
-        all.has(folder.parentId) &&
-        !all.has(folder.id)
-      ) {
-        all.add(folder.id);
-        changed = true;
-      }
-    }
-  }
-  return [...all];
-}
-
-/**
- * A plain sentence describing what a delete will take with it.
- */
-function describeContents(contents: {
-  folders: number;
-  documents: number;
-  passages: number;
-}): string {
-  const parts: string[] = [];
-  if (contents.folders > 0) {
-    parts.push(pluralize(contents.folders, "sub-folder"));
-  }
-  if (contents.documents > 0) {
-    parts.push(pluralize(contents.documents, "document"));
-  }
-  if (contents.passages > 0) {
-    parts.push(pluralize(contents.passages, "passage"));
-  }
-
-  if (!parts.length) {
-    return "This folder is empty, so nothing else will be removed.";
-  }
-
-  return `${parts.join(", ")} will be removed from this device. This cannot be undone.`;
 }
