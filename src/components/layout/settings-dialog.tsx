@@ -1,201 +1,88 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "cn";
+import { CheckIcon, KeyRoundIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { MODELS, listModels, verifyApiKey, type GroqModel } from "@/lib/groq/client";
-
 import { useSettings } from "../library/settings-provider";
 
-/**
- * The settings panel: the user's Groq key and the model they want to talk to.
- *
- * The key is verified against Groq before it is stored, so a typo is caught
- * now rather than at the first question.
- */
-export function SettingsDialog({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { apiKey, model, setApiKey, setModel } = useSettings();
   const [draftKey, setDraftKey] = React.useState(apiKey);
+  const [draftModel, setDraftModel] = React.useState(model);
   const [models, setModels] = React.useState<GroqModel[]>([]);
   const [state, setState] = React.useState<
-    { kind: "idle" } | { kind: "checking" } | { kind: "ok"; message: string } | { kind: "bad"; message: string }
+    { kind: "idle" } | { kind: "checking" } | { kind: "ok" } | { kind: "bad"; message: string }
   >({ kind: "idle" });
-
-  // The models a key can reach depend on its tier, so the list is fetched
-  // from Groq rather than assumed.
-  React.useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const live = await listModels(draftKey);
-      if (cancelled) return;
-      setModels(live);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [draftKey]);
-
-  // The dialog keeps its own draft of the key, so the saved value is only
-  // replaced once Groq has confirmed it. The draft is re-seeded whenever the
-  // dialog is opened, which is a change of the dialog's identity rather than
-  // a reaction to a state update.
   const [lastOpen, setLastOpen] = React.useState(open);
   if (open !== lastOpen) {
     setLastOpen(open);
     if (open) {
       setDraftKey(apiKey);
+      setDraftModel(model);
       setState({ kind: "idle" });
     }
   }
 
-  const check = async () => {
+  React.useEffect(() => {
+    if (!open || !apiKey) return;
+    let cancelled = false;
+    void listModels(apiKey).then((live) => { if (!cancelled) setModels(live); });
+    return () => { cancelled = true; };
+  }, [apiKey, open]);
+
+  const availableModels: GroqModel[] = models.length ? [...models] : [...MODELS];
+  if (!availableModels.some((entry) => entry.id === draftModel)) {
+    availableModels.unshift({ id: draftModel, name: draftModel.split("/").pop() ?? draftModel, note: "Selected" });
+  }
+
+  const save = async () => {
     setState({ kind: "checking" });
     const result = await verifyApiKey(draftKey);
-    if (result.ok) {
-      setApiKey(draftKey);
-      setState({ kind: "ok", message: result.message });
-    } else {
+    if (!result.ok) {
       setState({ kind: "bad", message: result.message });
+      return;
     }
+    setApiKey(draftKey);
+    setModel(draftModel);
+    setState({ kind: "ok" });
   };
 
-  /**
-   * The models the key can actually reach, with the chosen one kept in the
-   * list even if Groq does not report it, so the selection is never lost.
-   */
-  const availableModels = React.useMemo(() => {
-    const list: GroqModel[] = models.length
-      ? [...models]
-      : MODELS.map((entry) => ({ ...entry }));
-
-    if (!list.some((entry) => entry.id === model)) {
-      const live = models.find((entry) => entry.id === model);
-      list.unshift(
-        live ?? {
-          id: model,
-          name: model.split("/").pop() ?? model,
-          note: "Selected",
-        }
-      );
-    }
-
-    return list;
-  }, [models, model]);
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="font-display text-[24px] font-normal">
-            Your API key
-          </DialogTitle>
-          <DialogDescription>
-            Quarry talks to Groq straight from your browser. The key is stored on
-            this device only, and your documents never leave it.
-          </DialogDescription>
+    <Dialog open={open} onOpenChange={(next) => { if (state.kind !== "checking") onOpenChange(next); }}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[440px]">
+        <DialogHeader className="px-2 pt-2">
+          <span className="mb-3 flex size-10 items-center justify-center rounded-xl bg-primary/7 text-primary"><KeyRoundIcon className="size-4" strokeWidth={1.6} /></span>
+          <DialogTitle className="text-xl font-medium tracking-tight">Make yourself at home.</DialogTitle>
+          <DialogDescription className="text-[13px] leading-6">Connect Groq to ask questions about your files.</DialogDescription>
         </DialogHeader>
-
-        <div className="flex flex-col gap-5 py-2">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="groq-key" className="text-[13px] font-medium">
-              Groq API key
-            </Label>
-            <Input
-              id="groq-key"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="gsk_..."
-              value={draftKey}
-              onChange={(event) => {
-                setDraftKey(event.target.value);
-                setState({ kind: "idle" });
-              }}
-              className="h-10 rounded-[12px] font-mono text-[13px]"
-            />
-            {state.kind === "ok" && (
-              <p className="text-[13px] text-lichen-green">{state.message}</p>
-            )}
-            {state.kind === "bad" && (
-              <p className="text-[13px] text-alarm-red">{state.message}</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="groq-model" className="text-[13px] font-medium">
-              Model
-            </Label>
-            <div className="flex flex-col gap-1.5">
-              {availableModels.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  onClick={() => setModel(entry.id)}
-                  className={cn(
-                    "flex items-center justify-between rounded-[12px] border px-4 py-2.5 text-left transition-colors",
-                    model === entry.id
-                      ? "border-electric-indigo bg-electric-indigo/5"
-                      : "border-stone-mist bg-paper-white hover:bg-warm-bone"
-                  )}
-                >
-                  <span className="flex flex-col">
-                    <span className="text-[14px] font-medium text-charcoal">
-                      {entry.name}
-                    </span>
-                    <span className="font-mono text-[11px] text-bark-grey">
-                      {entry.id}
-                    </span>
-                  </span>
-                  <span className="tag-label text-[10px] text-bark-grey">
-                    {entry.note}
-                  </span>
-                </button>
-              ))}
+        <div className="space-y-5 px-2 py-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="groq-key" className="text-xs">API key</Label>
+              {apiKey && <span className="flex items-center gap-1 text-[10px] text-primary"><CheckIcon className="size-3" /> Connected</span>}
             </div>
-            <p className="text-[12px] text-bark-grey">
-              {models.length
-                ? "The models your key can reach."
-                : "The default models are shown until the key is verified."}
-            </p>
+            <Input id="groq-key" type="password" autoComplete="off" spellCheck={false} placeholder="gsk_…" value={draftKey} disabled={state.kind === "checking"} onChange={(event) => { setDraftKey(event.target.value); setState({ kind: "idle" }); }} className="h-10 rounded-lg font-mono text-xs" />
+            <p className="text-[11px] text-muted-foreground">Saved on this device. Only sent to Groq.</p>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="groq-model" className="text-xs">Answer model</Label>
+            <select id="groq-model" value={draftModel} disabled={state.kind === "checking"} onChange={(event) => { setDraftModel(event.target.value); setState({ kind: "idle" }); }} className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-[13px]">
+              {availableModels.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.note}</option>)}
+            </select>
+          </div>
+          <p className="rounded-lg bg-muted/65 p-3 text-[11px] leading-5 text-muted-foreground">Your PDFs are processed in your browser. When you chat, relevant document text and your conversation are sent to Groq to generate an answer.</p>
+          {state.kind === "bad" && <p role="alert" className="text-xs leading-5 text-destructive">{state.message}</p>}
+          {state.kind === "ok" && <p role="status" className="flex items-center gap-2 text-xs text-primary"><CheckIcon className="size-3.5" /> You’re connected. Ready when you are.</p>}
         </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            className="h-9 rounded-[8px] px-4 text-[13px] font-semibold uppercase tracking-[0.04em]"
-            onClick={() => onOpenChange(false)}
-          >
-            Close
-          </Button>
-          <Button
-            className="h-9 rounded-[8px] bg-electric-indigo px-4 text-[13px] font-semibold uppercase tracking-[0.04em] hover:bg-deep-violet"
-            onClick={check}
-            disabled={!draftKey.trim() || state.kind === "checking"}
-          >
-            {state.kind === "checking" && <Spinner className="size-3.5" />}
-            Save and verify
-          </Button>
+        <DialogFooter className="flex-row items-center justify-between sm:justify-between">
+          {apiKey ? <button type="button" disabled={state.kind === "checking"} onClick={() => { setApiKey(""); setDraftKey(""); setModels([]); setState({ kind: "idle" }); }} className="rounded-sm text-xs text-muted-foreground hover:text-destructive disabled:opacity-50">Disconnect</button> : <span />}
+          {state.kind === "ok" ? <Button onClick={() => onOpenChange(false)} className="h-9 px-4 text-xs">Back to chat</Button> : <Button onClick={() => void save()} disabled={!draftKey.trim() || state.kind === "checking"} className="h-9 px-4 text-xs">{state.kind === "checking" && <Spinner className="size-3.5" />}{state.kind === "checking" ? "Connecting…" : "Save connection"}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

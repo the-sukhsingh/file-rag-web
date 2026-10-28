@@ -1,16 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  CheckIcon,
-  CopyIcon,
-  FileTextIcon,
-  Loader2Icon,
-  SearchIcon,
-  SparklesIcon,
-  TerminalIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CopyIcon, FileTextIcon, Loader2Icon, SearchIcon, TriangleAlertIcon } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -22,256 +13,124 @@ import type { ChatMessage, TraceStep } from "@/lib/library/types";
 
 import "katex/dist/katex.min.css";
 
-/**
- * The conversation.
- *
- * The assistant's answers are set in the page rather than boxed in a card, so
- * the thread reads as a document. The work it did folds into one quiet line
- * above the answer, and only opens when it is clicked.
- */
-
-export function MessageList({
-  messages,
-  onCite,
-  compact = false,
-}: {
+export function MessageList({ messages, onCite, getSourceLabel, isBusy }: {
   messages: ChatMessage[];
   onCite?: (chunkId: string) => void;
-  /** A narrower variant, for the chat panel beside the editor. */
-  compact?: boolean;
+  getSourceLabel?: (chunkId: string) => string;
+  isBusy?: boolean;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const stickToEnd = React.useRef(true);
 
   React.useEffect(() => {
     const container = scrollRef.current;
-    if (!container || !stickToEnd.current) return;
-    container.scrollTop = container.scrollHeight;
+    if (container && stickToEnd.current) container.scrollTop = container.scrollHeight;
   }, [messages]);
 
   return (
     <div
       ref={scrollRef}
+      role="log"
+      aria-label="Conversation"
+      aria-live="polite"
+      aria-relevant="additions"
+      aria-busy={isBusy}
       onScroll={(event) => {
         const container = event.currentTarget;
-        const distanceFromEnd =
-          container.scrollHeight - container.scrollTop - container.clientHeight;
-        stickToEnd.current = distanceFromEnd < 64;
+        stickToEnd.current = container.scrollHeight - container.scrollTop - container.clientHeight < 64;
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >
-      <div
-        className={cn(
-          "mx-auto flex w-full flex-col gap-8",
-          compact ? "gap-6 px-4 py-6" : "max-w-[720px] px-6 py-8"
-        )}
-      >
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} onCite={onCite} />
+      <div className="mx-auto flex w-full max-w-[824px] flex-col gap-9 px-4 py-8 sm:px-8 sm:py-10">
+        {messages.map((message, index) => (
+          <MessageBubble key={message.id} message={message} onCite={onCite} getSourceLabel={getSourceLabel} isStreaming={!!isBusy && index === messages.length - 1} />
         ))}
       </div>
     </div>
   );
 }
 
-function MessageBubble({
-  message,
-  onCite,
-}: {
+function MessageBubble({ message, onCite, getSourceLabel, isStreaming }: {
   message: ChatMessage;
   onCite?: (chunkId: string) => void;
+  getSourceLabel?: (chunkId: string) => string;
+  isStreaming: boolean;
 }) {
   const [copied, setCopied] = React.useState(false);
+  const [copyError, setCopyError] = React.useState(false);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-[12px] bg-stone-mist/70 px-3.5 py-2.5 text-[14px] leading-[1.5] text-charcoal">
-          {message.content}
+        <div className="max-w-[88%] rounded-2xl rounded-br-md bg-muted px-4 py-3 text-[14px] leading-6 whitespace-pre-wrap [overflow-wrap:anywhere] sm:max-w-[80%]">
+          <span className="sr-only">You: </span>{message.content}
         </div>
       </div>
     );
   }
 
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setCopyError(false);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyError(true);
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-2.5">
-      {message.trace && message.trace.length > 0 && (
-        <TraceList steps={message.trace} onCite={onCite} />
+    <article className="min-w-0" aria-label="Quarry’s answer">
+      <div className="mb-4 flex items-center gap-2 text-[12px] font-medium">
+        <span className="flex size-6 items-center justify-center rounded-md bg-primary/8 text-primary"><FileTextIcon className="size-3" strokeWidth={1.5} /></span>
+        Quarry
+        {isStreaming && <span className="ml-1 text-[11px] font-normal text-muted-foreground">{message.content ? "Writing…" : "Finding the details…"}</span>}
+      </div>
+      {message.content ? (
+        <div className="chat-prose min-w-0 text-[14px] leading-[1.85] text-foreground sm:text-[15px]">
+          <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatexDelimiters(normalizeCitations(message.content))}</Markdown>
+        </div>
+      ) : (
+        <div role="status" className="flex items-center gap-2 text-[12px] text-muted-foreground"><Loader2Icon className="size-3.5 animate-spin" /> Reading your files…</div>
       )}
-
-      {message.content && (
-        <>
-          <div className="prose prose-sm max-w-none break-words text-[14px] leading-[1.65] text-charcoal prose-headings:mt-4 prose-headings:mb-2 prose-headings:text-[16px] prose-headings:font-semibold prose-headings:text-charcoal prose-p:my-2.5 prose-ul:my-2.5 prose-ol:my-2.5 prose-li:my-1 prose-li:pl-1 prose-strong:font-semibold prose-strong:text-charcoal prose-code:rounded-[5px] prose-code:bg-stone-mist/70 prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-[12.5px] prose-code:font-normal prose-pre:rounded-[12px] prose-pre:border prose-pre:border-stone-mist prose-pre:bg-warm-bone prose-pre:p-4 prose-blockquote:border-l-2 prose-blockquote:border-stone-mist prose-blockquote:pl-3 prose-blockquote:text-bark-grey prose-a:text-sapphire-link">
-            <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-              {normalizeLatexDelimiters(normalizeCitations(message.content))}
-            </Markdown>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {message.citations && message.citations.length > 0 && (
-              <div className="mr-1 flex flex-wrap items-center gap-1">
-                {message.citations.map((chunkId, index) => (
-                  <button
-                    key={chunkId}
-                    type="button"
-                    onClick={() => onCite?.(chunkId)}
-                    title="Show this passage"
-                    className="rounded-[6px] border border-stone-mist px-1.5 py-0.5 font-mono text-[10px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
-                  >
-                    {index + 1}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Copy the answer"
-              onClick={() => {
-                navigator.clipboard.writeText(message.content);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="text-pebble hover:text-charcoal"
-            >
-              {copied ? (
-                <CheckIcon className="size-3.5" />
-              ) : (
-                <CopyIcon className="size-3.5" />
-              )}
-            </Button>
-          </div>
-        </>
+      {message.citations && message.citations.length > 0 && onCite && (
+        <div className="mt-5 flex flex-wrap gap-1.5" aria-label="Answer sources">
+          {message.citations.map((chunkId, index) => {
+            const label = getSourceLabel?.(chunkId) ?? `Source ${index + 1}`;
+            return <button key={chunkId} type="button" onClick={() => onCite(chunkId)} title={label} aria-label={`View source: ${label}`} className="flex max-w-full items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary"><FileTextIcon className="size-3 shrink-0" /><span className="truncate">{label}</span><span className="sr-only"> — passage {index + 1}</span></button>;
+          })}
+        </div>
       )}
-    </div>
+      <div className="mt-3 flex flex-wrap items-start gap-2">
+        {message.content && !isStreaming && <Button variant="ghost" size="icon-sm" aria-label={copied ? "Answer copied" : "Copy answer"} onClick={() => void copy()} className="size-7 text-muted-foreground hover:text-foreground">{copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}</Button>}
+        {message.trace && message.trace.length > 0 && <TraceList steps={message.trace} isStreaming={isStreaming} />}
+        {copyError && <p role="status" className="self-center text-[11px] text-muted-foreground">Copy unavailable. Select the answer to copy it.</p>}
+      </div>
+    </article>
   );
 }
 
-/**
- * The agent's work, folded into one line that opens on click.
- */
-function TraceList({
-  steps,
-  onCite,
-}: {
-  steps: TraceStep[];
-  onCite?: (chunkId: string) => void;
-}) {
+function TraceList({ steps, isStreaming }: { steps: TraceStep[]; isStreaming: boolean }) {
   const [isOpen, setIsOpen] = React.useState(false);
-  const last = steps[steps.length - 1];
-
-  const summary = React.useMemo(() => {
-    const searches = steps.filter((step) => step.kind === "search");
-    const reads = steps.filter((step) => step.kind === "read");
-    const passages = new Set(
-      searches.flatMap((step) => step.chunkIds ?? [])
-    ).size;
-
-    const parts: string[] = [];
-    if (searches.length) {
-      parts.push(
-        `${searches.length} search${searches.length === 1 ? "" : "es"}`
-      );
-    }
-    if (passages) parts.push(`${passages} passage${passages === 1 ? "" : "s"}`);
-    if (reads.length) {
-      parts.push(`${reads.length} command${reads.length === 1 ? "" : "s"}`);
-    }
-
-    return parts.join(" · ") || "Working";
-  }, [steps]);
-
-  const isRunning = last?.state === "running";
+  const detailsId = React.useId();
+  const passageCount = new Set(steps.flatMap((step) => step.chunkIds ?? [])).size;
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <button
-        type="button"
-        onClick={() => setIsOpen((value) => !value)}
-        className="group flex w-fit items-center gap-1.5 text-[12px] text-pebble transition-colors hover:text-bark-grey"
-      >
-        {isRunning ? (
-          <Loader2Icon className="size-3 animate-spin text-electric-indigo" />
-        ) : (
-          <SearchIcon className="size-3" />
-        )}
-        <span className="font-mono">{isRunning ? last?.title : summary}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={cn(
-            "size-3 transition-transform",
-            isOpen && "rotate-90"
-          )}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m9 18 6-6-6-6" />
-        </svg>
+    <div className="min-w-0 flex-1">
+      <button type="button" aria-expanded={isOpen} aria-controls={detailsId} onClick={() => setIsOpen((value) => !value)} className="flex min-h-7 items-center gap-1.5 rounded-sm text-[10px] text-muted-foreground hover:text-foreground">
+        {isStreaming ? <Loader2Icon className="size-3 animate-spin" /> : <SearchIcon className="size-3" />}
+        {isStreaming ? "Looking through your files" : passageCount ? `Reviewed ${passageCount} ${passageCount === 1 ? "passage" : "passages"}` : "Response details"}
+        <ChevronDownIcon className={cn("size-3 transition-transform", isOpen && "rotate-180")} />
       </button>
-
       {isOpen && (
-        <div className="flex flex-col gap-0.5 rounded-[10px] border border-stone-mist bg-paper-white px-3 py-2">
-          {steps.map((step) => (
-            <div
-              key={step.id}
-              className="flex items-center gap-2 py-1 text-[12px]"
-            >
-              <StepIcon step={step} />
-              <span className="min-w-0 flex-1 truncate text-bark-grey">
-                {step.title}
-              </span>
-              {step.durationMs !== undefined && (
-                <span className="shrink-0 font-mono text-[10px] tabular-nums text-pebble">
-                  {step.durationMs}ms
-                </span>
-              )}
-            </div>
-          ))}
-
-          {steps.some((step) => step.chunkIds?.length) && (
-            <div className="mt-1 flex flex-wrap items-center gap-1 border-t border-stone-mist pt-2">
-              {[...new Set(steps.flatMap((step) => step.chunkIds ?? []))].map(
-                (chunkId) => (
-                  <button
-                    key={chunkId}
-                    type="button"
-                    onClick={() => onCite?.(chunkId)}
-                    className="rounded-[6px] border border-stone-mist px-1.5 py-0.5 font-mono text-[10px] text-bark-grey transition-colors hover:border-electric-indigo/40 hover:text-electric-indigo"
-                  >
-                    {chunkId.slice(-8)}
-                  </button>
-                )
-              )}
-            </div>
-          )}
+        <div id={detailsId} className="mt-2 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+          {steps.map((step) => <div key={step.id} className="flex items-start gap-2 text-[11px] leading-5 text-muted-foreground">{step.state === "running" ? <Loader2Icon className="mt-1 size-3 shrink-0 animate-spin" /> : step.state === "failed" ? <TriangleAlertIcon className="mt-1 size-3 shrink-0" /> : <CheckIcon className="mt-1 size-3 shrink-0" />}<span className="min-w-0 break-words">{step.title}</span></div>)}
         </div>
       )}
     </div>
   );
-}
-
-function StepIcon({ step }: { step: TraceStep }) {
-  if (step.state === "running") {
-    return (
-      <Loader2Icon className="size-3 shrink-0 animate-spin text-electric-indigo" />
-    );
-  }
-  if (step.state === "failed") {
-    return <TriangleAlertIcon className="size-3 shrink-0 text-alarm-red" />;
-  }
-  if (step.kind === "search") {
-    return <SearchIcon className="size-3 shrink-0 text-pebble" />;
-  }
-  if (step.kind === "read") {
-    return <TerminalIcon className="size-3 shrink-0 text-pebble" />;
-  }
-  if (step.kind === "answer") {
-    return <SparklesIcon className="size-3 shrink-0 text-electric-indigo" />;
-  }
-  return <FileTextIcon className="size-3 shrink-0 text-pebble" />;
 }

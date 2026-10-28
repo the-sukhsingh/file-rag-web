@@ -247,7 +247,15 @@ export default function WorkspacePage() {
         </header>
 
         {messages.length > 0 ? (
-          <MessageList messages={messages} onCite={handleCite} />
+          <MessageList
+            messages={messages}
+            onCite={handleCite}
+            isBusy={isBusy}
+            getSourceLabel={(id) => {
+              const entry = sourcesRef.current.get(id);
+              return entry ? `${entry.name}${entry.chunk.startPage ? ` · p. ${entry.chunk.startPage}` : ""}` : "Source";
+            }}
+          />
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8 sm:px-10">
             <div className="workspace-enter my-auto w-full max-w-[640px] text-center">
