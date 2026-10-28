@@ -107,6 +107,24 @@ export interface ChatMessage {
   createdAt: number;
 }
 
+export type SourceChunk = Pick<Chunk, "id" | "documentId" | "section" | "index" | "startPage" | "endPage" | "text">;
+
+export interface ChatSource {
+  chunk: SourceChunk;
+  name: string;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  documentIds: string[];
+  sources: ChatSource[];
+  isStreaming: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** The result of one agent turn, streamed to the UI. */
 export type AgentEvent =
   | { type: "trace"; step: TraceStep }
