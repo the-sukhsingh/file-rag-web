@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRightIcon, FileTextIcon, FilesIcon, PanelLeftIcon, PlusIcon, UploadIcon } from "lucide-react";
+import { ArrowUpRightIcon, FileTextIcon, FilesIcon, HistoryIcon, PanelLeftIcon, PlusIcon, UploadIcon } from "lucide-react";
 
+import { ChatHistoryDialog } from "@/components/chat/chat-history-dialog";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
+import { useChatHistory } from "@/components/chat/use-chat-history";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { FileSidebar, type UploadState } from "@/components/library/file-sidebar";
 import { useLibrary } from "@/components/library/library-provider";
@@ -16,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import { listChunksByDocument } from "@/lib/library/store";
-import type { ChatMessage, Chunk, DocumentRecord } from "@/lib/library/types";
+import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
 
 const suggestions = [
   { label: "Give me a summary", question: "Give me a clear, concise summary of the selected files, citing the sources." },
@@ -24,13 +26,15 @@ const suggestions = [
   { label: "Compare my files", question: "Compare the selected files. Where do they agree and differ? Cite the sources." },
 ];
 
-type SourcePreview = { title: string; documentId: string; chunks: Chunk[] | null; error?: string };
+type SourcePreview = { title: string; documentId: string; chunks: SourceChunk[] | null; error?: string };
 
 export default function WorkspacePage() {
   const library = useLibrary();
   const settings = useSettings();
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [excludedIds, setExcludedIds] = React.useState(new Set<string>());
+  const history = useChatHistory();
+  const messages = history.activeConversation?.messages ?? [];
+  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+  const [draftExcludedIds, setDraftExcludedIds] = React.useState(new Set<string>());
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isFilesOpen, setIsFilesOpen] = React.useState(false);
@@ -46,13 +50,32 @@ export default function WorkspacePage() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const uploadingRef = React.useRef(false);
-  const sourcesRef = React.useRef(new Map<string, { chunk: Chunk; name: string }>());
+  const sourcesRef = React.useRef(new Map<string, ChatSource>());
 
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
+  const activeDocumentIds = history.activeConversation?.documentIds;
+  const excludedIds = activeDocumentIds
+    ? new Set(library.documents.filter((document) => !activeDocumentIds.includes(document.id)).map((document) => document.id))
+    : draftExcludedIds;
   const selectedDocuments = library.documents.filter((document) => !excludedIds.has(document.id));
   const hasReadableFiles = selectedDocuments.some((document) => document.chunkCount > 0);
-  const locked = isBusy || isRemoving;
+  const locked = isBusy || isRemoving || !history.ready;
+  const savedSources = new Map(history.activeConversation?.sources.map((entry) => [entry.chunk.id, entry]) ?? []);
+
+  const setSelection = (next: Set<string>) => {
+    if (history.activeConversation) history.updateConversation(history.activeConversation.id, (conversation) => ({ ...conversation, documentIds: library.documents.filter((document) => !next.has(document.id)).map((document) => document.id) }));
+    else setDraftExcludedIds(next);
+  };
+
+  const openConversation = (id: string | null) => {
+    if (locked || uploadingRef.current) return;
+    history.selectConversation(id);
+    sourcesRef.current.clear();
+    setSource(null);
+    setIsHistoryOpen(false);
+    setChatVersion((value) => value + 1);
+  };
 
   const handleFiles = async (files: File[]) => {
     if (uploadingRef.current || locked || !files.length) return;
@@ -76,6 +99,7 @@ export default function WorkspacePage() {
           const result = await library.importPdf(file, null, (_message, percent) => {
             setUpload({ name: file.name, percent: Math.min(percent, 95), position: index + 1, total: files.length });
           });
+          if (history.activeConversation) history.updateConversation(history.activeConversation.id, (conversation) => ({ ...conversation, documentIds: [...conversation.documentIds, result.document.id] }));
           if (!result.chunks.length) {
             errors.push(`${file.name}: no readable text was found. Try a text-based PDF instead of a scanned image.`);
           }
@@ -91,7 +115,7 @@ export default function WorkspacePage() {
   };
 
   const handleAsk = async (question: string) => {
-    if (abortRef.current || !hasReadableFiles || isRemoving) return;
+    if (abortRef.current || !hasReadableFiles || isRemoving || !history.ready) return;
     if (!settings.hasKey) {
       setIsSettingsOpen(true);
       return;
@@ -99,13 +123,25 @@ export default function WorkspacePage() {
     const controller = new AbortController();
     abortRef.current = controller;
     const assistantId = createMessageId();
+    const conversationId = history.activeConversation?.id ?? createMessageId();
     const userMessage: ChatMessage = { id: createMessageId(), role: "user", content: question, createdAt: now() };
-    setMessages((previous) => [...previous, userMessage, { id: assistantId, role: "assistant", content: "", trace: [], createdAt: now() }]);
+    const assistantMessage: ChatMessage = { id: assistantId, role: "assistant", content: "", trace: [], createdAt: now() };
+    if (history.activeConversation) {
+      history.updateConversation(conversationId, (conversation) => ({ ...conversation, messages: [...conversation.messages, userMessage, assistantMessage], isStreaming: true }));
+    } else {
+      history.createConversation({ id: conversationId, title: question.trim().slice(0, 100), messages: [userMessage, assistantMessage], documentIds: selectedDocuments.map((document) => document.id), sources: [], isStreaming: true, createdAt: now(), updatedAt: now() });
+    }
     setIsBusy(true);
 
-    const patch = (update: (message: ChatMessage) => ChatMessage) => {
+    const patch = (update: (message: ChatMessage) => ChatMessage, finished = false) => {
       if (abortRef.current !== controller) return;
-      setMessages((previous) => previous.map((message) => message.id === assistantId ? update(message) : message));
+      const availableSources = new Map([...savedSources, ...sourcesRef.current]);
+      history.updateConversation(conversationId, (conversation) => {
+        const nextMessages = conversation.messages.map((message) => message.id === assistantId ? update(message) : message);
+        const citedIds = new Set(nextMessages.flatMap((message) => message.citations ?? []));
+        const sources = [...citedIds].flatMap((id) => { const entry = availableSources.get(id); return entry ? [entry] : []; });
+        return { ...conversation, messages: nextMessages, sources, isStreaming: !finished };
+      });
     };
 
     try {
@@ -114,7 +150,9 @@ export default function WorkspacePage() {
       const chunks = groups.flat();
       if (!chunks.length) throw new Error("These files have no readable text. Please add a text-based PDF.");
       const documentNames = new Map(selectedDocuments.map((document) => [document.id, document.fileName]));
-      for (const chunk of chunks) sourcesRef.current.set(chunk.id, { chunk, name: documentNames.get(chunk.documentId) ?? "Source" });
+      for (const { id, documentId, section, index, startPage, endPage, text } of chunks) {
+        sourcesRef.current.set(id, { chunk: { id, documentId, section, index, startPage, endPage, text }, name: documentNames.get(documentId) ?? "Source" });
+      }
       await runAgent(
         {
           question,
@@ -145,7 +183,7 @@ export default function WorkspacePage() {
         ...message,
         content: message.content || (controller.signal.aborted ? "Response stopped." : "No answer was returned. Please try again."),
         trace: message.trace?.map((step) => step.state === "running" ? { ...step, state: "failed" } : step),
-      }));
+      }), true);
       if (abortRef.current === controller) {
         abortRef.current = null;
         setIsBusy(false);
@@ -159,18 +197,19 @@ export default function WorkspacePage() {
 
   const handlePreview = async (document: DocumentRecord) => {
     setIsFilesOpen(false);
-    setSource({ title: document.fileName, documentId: document.id, chunks: null });
+    const preview: SourcePreview = { title: document.fileName, documentId: document.id, chunks: null };
+    setSource(preview);
     try {
       const chunks = await listChunksByDocument(document.id);
       chunks.sort((a, b) => (a.startPage ?? 0) - (b.startPage ?? 0) || a.index - b.index);
-      setSource((previous) => previous?.documentId === document.id ? { ...previous, chunks } : previous);
+      setSource((previous) => previous === preview ? { ...previous, chunks } : previous);
     } catch {
-      setSource((previous) => previous?.documentId === document.id ? { ...previous, chunks: [], error: "Could not load this file. Please try again." } : previous);
+      setSource((previous) => previous === preview ? { ...previous, chunks: [], error: "Could not load this file. Please try again." } : previous);
     }
   };
 
   const handleCite = (chunkId: string) => {
-    const entry = sourcesRef.current.get(chunkId);
+    const entry = sourcesRef.current.get(chunkId) ?? savedSources.get(chunkId);
     if (entry) setSource({ title: entry.name, documentId: entry.chunk.documentId, chunks: [entry.chunk] });
   };
 
@@ -180,7 +219,7 @@ export default function WorkspacePage() {
     setRemovalError(null);
     try {
       await library.removeDocument(pendingRemoval.id);
-      setExcludedIds((previous) => {
+      setDraftExcludedIds((previous) => {
         const next = new Set(previous);
         next.delete(pendingRemoval.id);
         return next;
@@ -198,12 +237,12 @@ export default function WorkspacePage() {
       documents={library.documents}
       ready={library.ready}
       excludedIds={excludedIds}
-      onToggle={(id) => setExcludedIds((previous) => {
-        const next = new Set(previous);
+      onToggle={(id) => {
+        const next = new Set(excludedIds);
         if (next.has(id)) next.delete(id); else next.add(id);
-        return next;
-      })}
-      onSelectAll={() => setExcludedIds(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
+        setSelection(next);
+      }}
+      onSelectAll={() => setSelection(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
       onPreview={(document) => void handlePreview(document)}
       onRemove={(document) => { setIsFilesOpen(false); setRemovalError(null); setPendingRemoval(document); }}
       onPickFiles={() => inputRef.current?.click()}
@@ -255,16 +294,21 @@ export default function WorkspacePage() {
             </Sheet>
             <h1 className="text-[13px] font-medium">Chat</h1>
           </div>
-          <Button variant="ghost" disabled={isBusy || messages.length === 0} onClick={() => { setMessages([]); sourcesRef.current.clear(); setChatVersion((value) => value + 1); }} className="h-8 gap-2 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button variant="ghost" disabled={!history.ready} onClick={() => setIsHistoryOpen(true)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><HistoryIcon className="size-3.5" /> History</Button>
+            <Button variant="ghost" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
+          </div>
         </header>
+        {history.error && <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive sm:px-8"><p>{history.error}</p><button type="button" onClick={history.retry} className="shrink-0 rounded-sm font-medium underline underline-offset-4">Retry</button></div>}
 
-        {messages.length > 0 ? (
+        {!history.ready ? <div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner className="size-3.5" /> Loading your conversations…</div> : messages.length > 0 ? (
           <MessageList
+            key={history.activeId}
             messages={messages}
             onCite={handleCite}
             isBusy={isBusy}
             getSourceLabel={(id) => {
-              const entry = sourcesRef.current.get(id);
+              const entry = sourcesRef.current.get(id) ?? savedSources.get(id);
               return entry ? `${entry.name}${entry.chunk.startPage ? ` · p. ${entry.chunk.startPage}` : ""}` : "Source";
             }}
           />
@@ -305,8 +349,8 @@ export default function WorkspacePage() {
           onSubmit={(text) => void handleAsk(text)}
           onStop={handleStop}
           isBusy={isBusy}
-          disabled={!library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
-          placeholder={!library.documents.length ? "Your next insight starts with a file…" : !selectedDocuments.length ? "Select a file to start a conversation…" : !hasReadableFiles ? "Add a PDF with readable text to chat…" : !settings.hasKey ? "Connect AI to ask your first question…" : "Ask anything about your files…"}
+          disabled={!history.ready || !library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
+          placeholder={!history.ready ? "Loading your conversations…" : !library.documents.length ? "Your next insight starts with a file…" : !selectedDocuments.length ? "Select a file to start a conversation…" : !hasReadableFiles ? "Add a PDF with readable text to chat…" : !settings.hasKey ? "Connect AI to ask your first question…" : "Ask anything about your files…"}
         >
           <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
           <span>{selectedDocuments.length ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in this conversation` : "No files selected"}</span>
@@ -319,6 +363,19 @@ export default function WorkspacePage() {
       </main>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      <ChatHistoryDialog
+        open={isHistoryOpen}
+        onOpenChange={setIsHistoryOpen}
+        conversations={history.conversations}
+        activeId={history.activeId}
+        onSelect={openConversation}
+        onDelete={(id) => {
+          if (locked || uploadingRef.current) return;
+          if (id === history.activeId) openConversation(null);
+          history.deleteConversation(id);
+        }}
+        disabled={locked || !!upload}
+      />
       <Dialog open={!!pendingRemoval} onOpenChange={(open) => { if (!open && !isRemoving) setPendingRemoval(null); }}>
         <DialogContent>
           <DialogHeader>
