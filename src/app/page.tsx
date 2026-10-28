@@ -56,6 +56,7 @@ export default function WorkspacePage() {
   const handleFiles = async (files: File[]) => {
     if (uploadingRef.current || locked || !files.length) return;
     uploadingRef.current = true;
+    if (window.matchMedia("(max-width: 767px)").matches) setIsFilesOpen(true);
     setUploadError(null);
     const errors: string[] = [];
     try {
@@ -259,9 +260,9 @@ export default function WorkspacePage() {
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8 sm:px-10">
             <div className="workspace-enter my-auto w-full max-w-[640px] text-center">
-              <span className="mx-auto mb-7 flex size-12 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 text-primary"><FilesIcon className="size-5" strokeWidth={1.4} /></span>
-              <p className="mb-4 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase">Less searching. More understanding.</p>
-              <h2 className="display-face text-[32px] text-foreground sm:text-[44px]">Your documents.<br /><span className="text-primary italic">A clearer perspective.</span></h2>
+              <span className="mx-auto mb-7 flex size-12 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 text-primary [@media(max-height:700px)]:hidden"><FilesIcon className="size-5" strokeWidth={1.4} /></span>
+              <p className="mb-4 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase [@media(max-height:700px)]:hidden">Less searching. More understanding.</p>
+              <h2 className="display-face text-[28px] text-foreground min-[380px]:text-[32px] sm:text-[44px]">Your documents.<br /><span className="text-primary italic">A clearer perspective.</span></h2>
               <p className="mx-auto mt-5 max-w-[360px] text-[13px] leading-6 text-muted-foreground">
                 {library.documents.length === 0
                   ? "Add your files, ask a question, and get to what matters. Every answer, connected to its source."
@@ -272,7 +273,7 @@ export default function WorkspacePage() {
               {library.documents.length === 0 ? (
                 <Button onClick={() => inputRef.current?.click()} disabled={!library.ready || !!upload} variant="outline" className="mt-7 h-10 gap-2 rounded-lg border-primary/20 bg-transparent px-4 text-[12px] font-medium text-primary hover:bg-primary/5"><PlusIcon className="size-3.5" /> Add your first file</Button>
               ) : (
-                <div className="mt-8 flex flex-wrap justify-center gap-2">
+                <div className="mt-8 flex flex-wrap justify-center gap-2 [@media(max-height:700px)]:hidden">
                   {suggestions.map((suggestion, index) => (
                     <button key={suggestion.label} type="button" disabled={!hasReadableFiles || isRemoving || (index === 2 && selectedDocuments.length < 2)} onClick={() => void handleAsk(suggestion.question)} className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-2.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">{suggestion.label}<ArrowUpRightIcon className="size-3" /></button>
                   ))}

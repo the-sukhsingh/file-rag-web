@@ -120,7 +120,7 @@ export function FileSidebar({
         )}
 
         {error && (
-          <div role="alert" className="mt-3 flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">
+          <div role="alert" className="mt-3 flex max-h-36 items-start gap-2 overflow-y-auto rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs leading-5 text-destructive">
             <p className="min-w-0 flex-1 break-words whitespace-pre-line">{error}</p>
             <button type="button" onClick={onDismissError} aria-label="Dismiss upload error" className="mt-0.5 shrink-0 rounded-sm"><XIcon className="size-3.5" /></button>
           </div>
@@ -177,8 +177,8 @@ export function FileSidebar({
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <label className="relative flex size-6 shrink-0 cursor-pointer items-center justify-center">
-                    <input type="checkbox" checked={selected} disabled={disabled} onChange={() => onToggle(document.id)} aria-label={`Use ${document.fileName} in chat`} className="peer sr-only" />
-                    <span className="flex size-4 items-center justify-center rounded-[5px] border border-input bg-background text-transparent transition-colors peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50"><CheckIcon className="size-3" strokeWidth={2.5} /></span>
+                    <input type="checkbox" checked={selected} disabled={disabled} onChange={() => onToggle(document.id)} aria-label={`Use ${document.fileName} in chat`} className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed" />
+                    <span className="pointer-events-none flex size-4 items-center justify-center rounded-[5px] border border-input bg-background text-transparent transition-colors peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-50"><CheckIcon className="size-3" strokeWidth={2.5} /></span>
                   </label>
                 </li>
               );

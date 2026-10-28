@@ -55,7 +55,7 @@ export function PromptBox({
                 }
               }}
               placeholder={placeholder}
-              className="field-sizing-content max-h-40 min-h-12 min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-6 text-foreground outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
+              className="field-sizing-content max-h-40 min-h-12 min-w-0 flex-1 resize-none bg-transparent text-base leading-6 text-foreground outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed sm:text-[15px]"
             />
             {isBusy ? (
               <Button
