@@ -85,10 +85,11 @@ export interface RetrievedChunk {
 /** One step of the agent's work, shown as a trace in the chat. */
 export interface TraceStep {
   id: string;
-  kind: "plan" | "search" | "read" | "answer";
+  kind: "plan" | "search" | "read" | "command" | "answer";
   title: string;
   detail?: string;
   state: "running" | "done" | "failed";
+  exitCode?: number;
   /** Chunk ids that were consulted in this step. */
   chunkIds?: string[];
   /** How long the step took, in milliseconds. */

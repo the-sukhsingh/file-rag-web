@@ -298,16 +298,7 @@ export async function runAgent(
     shell,
     history: request.history,
     options,
-    onShell: (command, result) => {
-      callbacks.onTrace(
-        createStep("read", command, {
-          state: result.exitCode === 0 ? "done" : "failed",
-          detail: truncate(result.stdout.trim(), 160),
-          durationMs: result.durationMs,
-          chunkIds: result.chunkIds,
-        })
-      );
-    },
+    onTrace: callbacks.onTrace,
     onText: callbacks.onText,
   });
 
@@ -334,7 +325,7 @@ async function answerWithShell({
   shell,
   history,
   options,
-  onShell,
+  onTrace,
   onText,
 }: {
   question: string;
@@ -343,15 +334,7 @@ async function answerWithShell({
   shell: WorkspaceShell;
   history?: { role: "user" | "assistant"; content: string }[];
   options: GroqOptions;
-  onShell: (
-    command: string,
-    result: {
-      exitCode: number;
-      stdout: string;
-      durationMs: number;
-      chunkIds: string[];
-    }
-  ) => void;
+  onTrace: AgentCallbacks["onTrace"];
   onText: (delta: string) => void;
 }): Promise<{
   text: string;
@@ -412,25 +395,33 @@ async function answerWithShell({
     for (const { call, command } of results) {
       commandsRun += 1;
 
+      const commandStep = createStep("command", command);
       const started = Date.now();
-      const result = await shell.run(command);
-      const durationMs = Date.now() - started;
+      onTrace(commandStep);
 
-      // The passages the command touched are noted, so the trace can point at
-      // the ones that were actually read.
-      const chunkIds = chunkIdsForOutput(result.stdout, shell);
-
-      onShell(command, {
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        durationMs,
-        chunkIds,
-      });
-
-      outputs.push({
-        id: call.id,
-        content: result.stdout || result.stderr || "(no output)",
-      });
+      try {
+        const result = await shell.run(command);
+        onTrace({
+          ...commandStep,
+          state: result.exitCode === 0 ? "done" : "failed",
+          detail: truncate((result.stderr || result.stdout).trim(), 160),
+          exitCode: result.exitCode,
+          durationMs: Date.now() - started,
+          chunkIds: chunkIdsForOutput(result.stdout, shell),
+        });
+        outputs.push({
+          id: call.id,
+          content: result.stdout || result.stderr || "(no output)",
+        });
+      } catch (error) {
+        onTrace({
+          ...commandStep,
+          state: "failed",
+          detail: error instanceof Error ? error.message : "The command could not be completed.",
+          durationMs: Date.now() - started,
+        });
+        throw error;
+      }
     }
 
     messages.push({ role: "assistant", content: "", toolResults: outputs });
