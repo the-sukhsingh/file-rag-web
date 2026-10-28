@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CheckIcon, ChevronDownIcon, CopyIcon, FileTextIcon, Loader2Icon, SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CopyIcon, FileTextIcon, Loader2Icon, SearchIcon, TerminalIcon, TriangleAlertIcon } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -90,6 +90,7 @@ function MessageBubble({ message, onCite, getSourceLabel, isStreaming }: {
         Quarry
         {isStreaming && <span className="ml-1 text-[11px] font-normal text-muted-foreground">{message.content ? "Writing…" : "Finding the details…"}</span>}
       </div>
+      {message.trace && message.trace.length > 0 && <TraceList steps={message.trace} isStreaming={isStreaming} />}
       {message.content ? (
         <div className="chat-prose min-w-0 text-[14px] leading-[1.85] text-foreground sm:text-[15px]">
           <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{normalizeLatexDelimiters(normalizeCitations(message.content))}</Markdown>
@@ -107,7 +108,6 @@ function MessageBubble({ message, onCite, getSourceLabel, isStreaming }: {
       )}
       <div className="mt-3 flex flex-wrap items-start gap-2">
         {message.content && !isStreaming && <Button variant="ghost" size="icon-sm" aria-label={copied ? "Answer copied" : "Copy answer"} onClick={() => void copy()} className="size-7 text-muted-foreground hover:text-foreground">{copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}</Button>}
-        {message.trace && message.trace.length > 0 && <TraceList steps={message.trace} isStreaming={isStreaming} />}
         {copyError && <p role="status" className="self-center text-[11px] text-muted-foreground">Copy unavailable. Select the answer to copy it.</p>}
       </div>
     </article>
@@ -115,22 +115,41 @@ function MessageBubble({ message, onCite, getSourceLabel, isStreaming }: {
 }
 
 function TraceList({ steps, isStreaming }: { steps: TraceStep[]; isStreaming: boolean }) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = React.useState(true);
   const detailsId = React.useId();
+  const commands = steps.filter((step) => step.kind === "command");
+  const visibleSteps = commands.length ? commands : steps;
   const passageCount = new Set(steps.flatMap((step) => step.chunkIds ?? [])).size;
 
   return (
-    <div className="min-w-0 flex-1">
-      <button type="button" aria-expanded={isOpen} aria-controls={detailsId} onClick={() => setIsOpen((value) => !value)} className="flex min-h-7 items-center gap-1.5 rounded-sm text-[10px] text-muted-foreground hover:text-foreground">
-        {isStreaming ? <Loader2Icon className="size-3 animate-spin" /> : <SearchIcon className="size-3" />}
-        {isStreaming ? "Looking through your files" : passageCount ? `Reviewed ${passageCount} ${passageCount === 1 ? "passage" : "passages"}` : "Response details"}
-        <ChevronDownIcon className={cn("size-3 transition-transform", isOpen && "rotate-180")} />
+    <div className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border/80 bg-muted/20">
+      <button type="button" aria-expanded={isOpen} aria-controls={detailsId} onClick={() => setIsOpen((value) => !value)} className="flex min-h-10 w-full items-center gap-2 px-3 text-left text-[11px] text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+        {isStreaming ? <Loader2Icon className="size-3.5 shrink-0 animate-spin" /> : commands.length ? <TerminalIcon className="size-3.5 shrink-0" /> : <SearchIcon className="size-3.5 shrink-0" />}
+        <span className="font-medium text-foreground">{commands.length ? "Command history" : "Search activity"}</span>
+        <span className="ml-auto text-[10px] tabular-nums">{commands.length ? `${commands.length} ${commands.length === 1 ? "command" : "commands"}` : `${passageCount} ${passageCount === 1 ? "passage" : "passages"}`}</span>
+        <ChevronDownIcon className={cn("size-3 shrink-0 transition-transform motion-reduce:transition-none", isOpen && "rotate-180")} />
       </button>
-      {isOpen && (
-        <div id={detailsId} className="mt-2 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-          {steps.map((step) => <div key={step.id} className="flex items-start gap-2 text-[11px] leading-5 text-muted-foreground">{step.state === "running" ? <Loader2Icon className="mt-1 size-3 shrink-0 animate-spin" /> : step.state === "failed" ? <TriangleAlertIcon className="mt-1 size-3 shrink-0" /> : <CheckIcon className="mt-1 size-3 shrink-0" />}<span className="min-w-0 break-words">{step.title}</span></div>)}
-        </div>
-      )}
+      <ol id={detailsId} hidden={!isOpen} aria-label={commands.length ? "Executed commands" : "Search steps"} className="divide-y divide-border/60 border-t border-border/60">
+        {visibleSteps.map((step, index) => (
+          <li key={step.id} className="flex min-w-0 items-start gap-2.5 px-3 py-3">
+            <span className="mt-0.5 shrink-0 font-mono text-[9px] text-muted-foreground/75" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+            <div className="min-w-0 flex-1">
+              {step.kind === "command" ? <code className="block whitespace-pre-wrap font-mono text-[11px] leading-5 text-foreground [overflow-wrap:anywhere]">{step.title}</code> : <p className="text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">{step.title}</p>}
+              <div className={cn("mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground", step.state === "failed" && "text-destructive")}>
+                <span>{step.state === "running" ? "Running…" : step.exitCode !== undefined ? `Exit ${step.exitCode}` : step.state === "failed" ? "Failed" : "Done"}</span>
+                {step.durationMs !== undefined && <span className="font-mono text-[9px] tabular-nums text-muted-foreground">{step.durationMs < 1000 ? `${step.durationMs} ms` : `${(step.durationMs / 1000).toFixed(1)} s`}</span>}
+              </div>
+              {step.detail && (step.kind === "command" ? (
+                <details className="group/output mt-2 text-[10px] text-muted-foreground">
+                  <summary className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm hover:text-foreground [&::-webkit-details-marker]:hidden"><ChevronDownIcon className="size-2.5 -rotate-90 transition-transform group-open/output:rotate-0 motion-reduce:transition-none" />Output preview</summary>
+                  <pre className="mt-2 max-h-28 overflow-y-auto border-l border-border pl-2.5 font-mono text-[10px] leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">{step.detail}</pre>
+                </details>
+              ) : <p className="mt-1 text-[10px] leading-5 text-muted-foreground [overflow-wrap:anywhere]">{step.detail}</p>)}
+            </div>
+            {step.state === "running" ? <Loader2Icon className="mt-1 size-3 shrink-0 animate-spin text-primary" aria-hidden="true" /> : step.state === "failed" ? <TriangleAlertIcon className="mt-1 size-3 shrink-0 text-destructive" aria-hidden="true" /> : <CheckIcon className="mt-1 size-3 shrink-0 text-primary" aria-hidden="true" />}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
