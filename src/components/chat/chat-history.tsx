@@ -1,75 +1,171 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquareIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { MessageSquareIcon, MoreHorizontalIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import type { Conversation } from "@/lib/library/types";
 
-export function ChatHistory({ conversations, activeId, onSelect, onNewChat, onDelete, ready, disabled }: {
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+
+function relativeTime(timestamp: number, now: number) {
+  const diff = timestamp - now;
+  const magnitude = Math.abs(diff);
+  if (magnitude < 60_000) return "just now";
+  if (magnitude < 3_600_000) return relativeFormat.format(Math.round(diff / 60_000), "minute");
+  if (magnitude < 86_400_000) return relativeFormat.format(Math.round(diff / 3_600_000), "hour");
+  if (magnitude < 7 * 86_400_000) return relativeFormat.format(Math.round(diff / 86_400_000), "day");
+  return dateFormat.format(timestamp);
+}
+
+function startOfDay(value: number, offset = 0) {
+  const day = new Date(value);
+  day.setHours(0, 0, 0, 0);
+  day.setDate(day.getDate() - offset);
+  return day.getTime();
+}
+
+function groupConversations(conversations: Conversation[], now: number) {
+  const today = startOfDay(now);
+  const yesterday = startOfDay(now, 1);
+  const lastWeek = startOfDay(now, 7);
+  const groups: { label: string; items: Conversation[] }[] = [];
+  for (const conversation of conversations) {
+    const label = conversation.updatedAt >= today ? "Today" : conversation.updatedAt >= yesterday ? "Yesterday" : conversation.updatedAt >= lastWeek ? "Previous 7 days" : "Earlier";
+    const group = groups.at(-1);
+    if (group?.label === label) group.items.push(conversation);
+    else groups.push({ label, items: [conversation] });
+  }
+  return groups;
+}
+
+export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready, disabled }: {
   conversations: Conversation[];
   activeId: string | null;
   onSelect: (id: string) => void;
-  onNewChat: () => void;
   onDelete: (id: string) => void;
   ready: boolean;
   disabled: boolean;
 }) {
   const [query, setQuery] = React.useState("");
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<Conversation | null>(null);
+  const [now, setNow] = React.useState(0);
+  React.useEffect(() => {
+    const update = () => setNow(Date.now());
+    const initial = window.setTimeout(update, 0);
+    const ticker = window.setInterval(update, 60_000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(ticker);
+    };
+  }, []);
   const visible = conversations.filter((conversation) => conversation.title.toLowerCase().includes(query.trim().toLowerCase()));
+  const reference = now || visible[0]?.updatedAt || 0;
+  const groups = reference ? groupConversations(visible, reference) : [];
+  const closeSearch = () => {
+    setIsSearchOpen(false);
+    setQuery("");
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-5 pt-5 pb-5">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="display-face text-[23px]">Your chats</h2>
-          <span className="font-mono text-[12px] tabular-nums text-muted-foreground" aria-label={`${conversations.length} conversations`}>{conversations.length.toString().padStart(2, "0")}</span>
-        </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">Pick up where you left off.</p>
-        <Button onClick={onNewChat} disabled={disabled || !ready} className="mt-5 h-10 w-full justify-start gap-2.5 rounded-lg px-3.5 text-[12px]"><PlusIcon className="size-3.5" /> New chat</Button>
+      <div className="flex shrink-0 items-center gap-2 px-2.5 pt-2 pb-1">
+        <h2 className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">Conversations</h2>
+        <span className="font-mono text-[10px] tabular-nums text-muted-foreground/70" aria-label={`${conversations.length} conversations`}>{conversations.length}</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={isSearchOpen ? "Close conversation search" : "Search conversations"}
+          aria-expanded={isSearchOpen}
+          onClick={() => isSearchOpen ? closeSearch() : setIsSearchOpen(true)}
+          className="ml-auto size-7 text-muted-foreground hover:text-foreground"
+        >
+          {isSearchOpen ? <XIcon className="size-3.5" /> : <SearchIcon className="size-3.5" />}
+        </Button>
       </div>
-      {conversations.length > 0 && (
-        <div className="relative mx-5 shrink-0">
-          <SearchIcon className="pointer-events-none absolute top-3 left-0 size-3.5 text-muted-foreground" />
-          <input aria-label="Search conversations" placeholder="Find a conversation…" value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 w-full border-b border-border bg-transparent pl-6 text-[12px] outline-none focus:border-primary" />
+      {isSearchOpen && (
+        <div className="relative mx-2.5 mb-1 shrink-0">
+          <SearchIcon className="pointer-events-none absolute top-2 left-0 size-3.5 text-muted-foreground" />
+          <input
+            autoFocus
+            aria-label="Search conversations"
+            placeholder="Find a conversation…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="h-8 w-full border-b border-border bg-transparent pr-1 pl-6 text-[12px] outline-none placeholder:text-muted-foreground/80 focus:border-primary"
+          />
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {!ready ? (
-          <div role="status" className="flex items-center gap-2 py-6 text-xs text-muted-foreground"><Spinner className="size-3" /> Loading your conversations…</div>
+          <div role="status" className="flex items-center gap-2 px-2.5 py-6 text-xs text-muted-foreground"><Spinner className="size-3" /> Loading your conversations…</div>
         ) : conversations.length === 0 ? (
-          <div className="border-t border-border pt-10 pb-6">
-            <MessageSquareIcon className="mb-5 size-7 text-primary/60" strokeWidth={1.2} />
-            <p className="display-face text-[18px]">A fresh start.</p>
-            <p className="mt-2 max-w-48 text-[11px] leading-5 text-muted-foreground">Ask your first question. Your conversations will appear here.</p>
+          <div className="px-2.5 pt-8 pb-6">
+            <MessageSquareIcon className="mb-4 size-6 text-primary/60" strokeWidth={1.2} />
+            <p className="text-[13px] font-medium">No conversations yet.</p>
+            <p className="mt-1.5 max-w-52 text-[11px] leading-5 text-muted-foreground">Ask your first question. Your conversations will appear here.</p>
           </div>
         ) : visible.length === 0 ? (
-          <div className="py-8 text-xs leading-5 text-muted-foreground">
+          <div className="px-2.5 py-8 text-xs leading-5 text-muted-foreground">
             <p className="break-words">No conversations match “{query}”.</p>
             <button type="button" onClick={() => setQuery("")} className="mt-3 text-primary underline underline-offset-4">Clear search</button>
           </div>
         ) : (
-          <ul className="divide-y divide-border/70" aria-label="Saved conversations">
-            {visible.map((conversation) => (
-              <li key={conversation.id} className={cn("group relative -mx-2 flex items-start gap-1 py-1 pr-1 pl-2 transition-colors hover:bg-accent/40", conversation.id === activeId && "bg-primary/5 before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:rounded-full before:bg-primary/60")}>
-                <button type="button" disabled={disabled} onClick={() => onSelect(conversation.id)} aria-current={conversation.id === activeId ? "true" : undefined} className="min-w-0 flex-1 rounded-sm py-3 text-left disabled:cursor-not-allowed disabled:opacity-50">
-                  <span className="line-clamp-2 text-[12px] leading-5 font-medium [overflow-wrap:anywhere]">{conversation.title}</span>
-                  <span className="mt-1.5 flex flex-wrap gap-x-1.5 gap-y-1 text-[10px] text-muted-foreground">
-                    <time dateTime={new Date(conversation.updatedAt).toISOString()}>{new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(conversation.updatedAt)}</time>
-                    <span aria-hidden="true">·</span><span>{conversation.messages.length} messages</span>
-                  </span>
-                </button>
-                <Button variant="ghost" size="icon-sm" disabled={disabled} aria-label={`Delete conversation: ${conversation.title}`} onClick={() => setPendingDelete(conversation)} className="mt-2 size-8 shrink-0 text-muted-foreground hover:text-destructive"><Trash2Icon className="size-3.5" /></Button>
-              </li>
+          <div className="space-y-2">
+            {groups.map((group) => (
+              <section key={group.label} aria-label={group.label}>
+                <h3 className="px-2.5 pt-1.5 pb-0.5 text-[9px] font-medium tracking-[0.10em] text-muted-foreground/80 uppercase">{group.label}</h3>
+                <ul>
+                  {group.items.map((conversation) => {
+                    const active = conversation.id === activeId;
+                    return (
+                      <li key={conversation.id}>
+                        <div className={cn("group flex h-9 items-center rounded-lg pr-1 transition-colors", active ? "bg-primary/8" : "hover:bg-accent/60")}>
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => onSelect(conversation.id)}
+                            aria-current={active ? "true" : undefined}
+                            className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", active ? "bg-primary" : "bg-border")} />
+                            <span className={cn("min-w-0 flex-1 truncate text-[12px] font-medium", active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>{conversation.title}</span>
+                            <time
+                              dateTime={new Date(conversation.updatedAt).toISOString()}
+                              title={new Date(conversation.updatedAt).toLocaleString()}
+                              className="max-w-[86px] shrink-0 truncate text-[10px] font-normal text-muted-foreground/80"
+                            >
+                              {relativeTime(conversation.updatedAt, reference)}
+                            </time>
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger render={<button type="button" aria-label={`Manage conversation: ${conversation.title}`} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-background hover:text-foreground"><MoreHorizontalIcon className="size-3.5" /></button>} />
+                            <DropdownMenuContent align="start" className="w-44">
+                              <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => setPendingDelete(conversation)}><Trash2Icon /> Delete conversation</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
         )}
       </div>
-      {disabled && ready && <p role="status" className="mx-5 border-t border-border py-3 text-[11px] leading-5 text-muted-foreground">Finish the current upload or stop the response before switching or deleting a chat.</p>}
+      {disabled && ready && <p role="status" className="mx-2.5 shrink-0 border-t border-border/70 py-2.5 text-[10px] leading-4 text-muted-foreground">Finish the current upload or stop the response before switching or deleting a chat.</p>}
       <Dialog open={!!pendingDelete} onOpenChange={(next) => { if (!next) setPendingDelete(null); }}>
         <DialogContent>
           <DialogHeader>

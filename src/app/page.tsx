@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRightIcon, FileTextIcon, FilesIcon, HardDriveIcon, HistoryIcon, PanelLeftIcon, PlusIcon, Settings2Icon, UploadIcon } from "lucide-react";
+import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, HardDriveIcon, KeyRoundIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
+import { cn } from "cn";
 
 import { ChatHistory } from "@/components/chat/chat-history";
 import { MessageList } from "@/components/chat/message-list";
@@ -16,16 +17,23 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import { listChunksByDocument } from "@/lib/library/store";
 import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
 
 const suggestions = [
-  { label: "Give me a summary", question: "Give me a clear, concise summary of the selected files, citing the sources." },
-  { label: "Find key takeaways", question: "What are the most important takeaways from the selected files? Cite the sources." },
-  { label: "Compare my files", question: "Compare the selected files. Where do they agree and differ? Cite the sources." },
+  { label: "Summarize", question: "Give me a clear, concise summary of the selected files, citing the sources.", icon: AlignLeftIcon },
+  { label: "Takeaways", question: "What are the most important takeaways from the selected files? Cite the sources.", icon: LightbulbIcon },
+  { label: "Compare", question: "Compare the selected files. Where do they agree and differ? Cite the sources.", icon: GitCompareArrowsIcon },
+];
+
+const ideas = [
+  "What are the main arguments across these files?",
+  "Which claims are supported by evidence in the documents?",
+  "Summarize the selected files in five bullet points.",
+  "Where do these documents agree, and where do they differ?",
+  "What questions do these documents leave unanswered?",
 ];
 
 type SourcePreview = { title: string; documentId: string; chunks: SourceChunk[] | null; error?: string };
@@ -44,13 +52,23 @@ function readSidebarView(): SidebarView {
   }
 }
 
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+function greetingFor(hour: number) {
+  return hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.";
+}
+
 export default function WorkspacePage() {
   const library = useLibrary();
   const settings = useSettings();
   const history = useChatHistory();
   const messages = history.activeConversation?.messages ?? [];
   const savedSidebarView = React.useSyncExternalStore(subscribeSidebarView, readSidebarView, () => "files" as const);
+  const mounted = React.useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
   const [sidebarView, setSidebarView] = React.useState<SidebarView | null>(null);
+  const [ideaIndex, setIdeaIndex] = React.useState(0);
   const [draftExcludedIds, setDraftExcludedIds] = React.useState(new Set<string>());
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
@@ -79,6 +97,22 @@ export default function WorkspacePage() {
   const hasReadableFiles = selectedDocuments.some((document) => document.chunkCount > 0);
   const locked = isBusy || isRemoving || !history.ready;
   const savedSources = new Map(history.activeConversation?.sources.map((entry) => [entry.chunk.id, entry]) ?? []);
+  const activeView = sidebarView ?? savedSidebarView;
+  const greeting = mounted ? greetingFor(new Date().getHours()) : "Hello.";
+  const idea = ideas[ideaIndex % ideas.length];
+  const heroSubline = library.documents.length === 0
+    ? "Add a PDF to start. Every answer stays tied to its source."
+    : selectedDocuments.length === 0
+      ? "Select a file in the sidebar to bring it into this conversation."
+      : `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} ready. Summarize, compare, or find one specific detail.`;
+  const composerPlaceholder = !history.ready ? "Loading your conversations…" : !library.documents.length ? "Your next insight starts with a file…" : !selectedDocuments.length ? "Select a file to start a conversation…" : !hasReadableFiles ? "Add a PDF with readable text to chat…" : !settings.hasKey ? "Connect AI to ask your first question…" : "Ask anything about your files…";
+  const keyBanner = !settings.hasKey && library.documents.length > 0 ? (
+    <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+      <KeyRoundIcon className="size-3.5 shrink-0 text-primary/70" aria-hidden="true" />
+      <span>Connect your Groq API key to start chatting.</span>
+      <button type="button" onClick={() => setIsSettingsOpen(true)} className="font-medium text-primary underline-offset-4 hover:underline">Connect AI</button>
+    </div>
+  ) : null;
 
   const changeSidebarView = (view: SidebarView) => {
     setSidebarView(view);
@@ -261,19 +295,59 @@ export default function WorkspacePage() {
 
   const sidebar = (
     <aside className="flex h-full min-h-0 flex-col bg-sidebar" aria-label="Workspace sidebar">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border/60 px-5">
-        <svg viewBox="0 0 32 32" fill="none" className="size-6 text-primary" aria-hidden="true">
+      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
+        <svg viewBox="0 0 32 32" fill="none" className="size-6 shrink-0 text-primary" aria-hidden="true">
           <path d="M7 5h13l6 6v15H7V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
           <path d="M20 5v7h6M3 10v20h17M12 17h9M12 21h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <span className="text-[23px] font-semibold tracking-[-0.055em]">quarry<span className="text-primary">.</span></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[20px] leading-none font-semibold tracking-[-0.055em]">quarry<span className="text-primary">.</span></p>
+          <p className="mt-1 truncate text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">Document workspace</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="hidden text-muted-foreground md:inline-flex"
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+          onClick={() => setIsSidebarOpen(false)}
+        >
+          <PanelLeftCloseIcon className="size-4" />
+        </Button>
       </div>
-      <Tabs value={sidebarView ?? savedSidebarView} onValueChange={(value) => { if (value === "files" || value === "chats") changeSidebarView(value); }} className="min-h-0 flex-1 gap-0">
-        <TabsList aria-label="Sidebar view" activateOnFocus className="mx-5 mt-4 w-auto shrink-0 bg-border/40">
-          <TabsTrigger value="files" className="gap-2 text-[11px]"><FilesIcon className="size-3.5" /> Files</TabsTrigger>
-          <TabsTrigger value="chats" className="gap-2 text-[11px]"><HistoryIcon className="size-3.5" /> Chats</TabsTrigger>
-        </TabsList>
-        <TabsContent value="files" keepMounted className="flex min-h-0 flex-col data-[hidden]:hidden">
+      <nav aria-label="Workspace views" className="shrink-0 px-3 pt-1">
+        <p className="px-3 pb-1.5 text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">Workspace</p>
+        <div className="space-y-0.5">
+          <button
+            type="button"
+            onClick={() => changeSidebarView("files")}
+            aria-current={activeView === "files" ? "page" : undefined}
+            className={cn(
+              "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[12px] transition-colors",
+              activeView === "files" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.06)]" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+          >
+            <FilesIcon className="size-4" strokeWidth={1.7} />
+            Files
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/70">{library.documents.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeSidebarView("chats")}
+            aria-current={activeView === "chats" ? "page" : undefined}
+            className={cn(
+              "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[12px] transition-colors",
+              activeView === "chats" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.06)]" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+          >
+            <MessagesSquareIcon className="size-4" strokeWidth={1.7} />
+            Chats
+            <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/70">{history.conversations.length}</span>
+          </button>
+        </div>
+      </nav>
+      <div className="mt-2 flex min-h-0 flex-1 flex-col">
+        <div className={cn("min-h-0 flex-1 flex-col", activeView === "files" ? "flex" : "hidden")}>
           <FileSidebar
             documents={library.documents}
             ready={library.ready}
@@ -294,13 +368,12 @@ export default function WorkspacePage() {
             disabled={locked}
             indexing={library.indexing}
           />
-        </TabsContent>
-        <TabsContent value="chats" keepMounted className="flex min-h-0 flex-col data-[hidden]:hidden">
+        </div>
+        <div className={cn("min-h-0 flex-1 flex-col", activeView === "chats" ? "flex" : "hidden")}>
           <ChatHistory
             conversations={history.conversations}
             activeId={history.activeId}
             onSelect={openConversation}
-            onNewChat={() => openConversation(null)}
             onDelete={(id) => {
               if (locked || uploadingRef.current) return;
               if (id === history.activeId) openConversation(null);
@@ -309,16 +382,44 @@ export default function WorkspacePage() {
             ready={history.ready}
             disabled={locked || !!upload}
           />
-        </TabsContent>
-      </Tabs>
-      <div className="mx-5 shrink-0 border-t border-border py-3">
+        </div>
+      </div>
+      <div className="shrink-0 px-3 pt-2 pb-3">
+        <button
+          type="button"
+          disabled={!history.ready || locked || !!upload || messages.length === 0}
+          onClick={() => openConversation(null)}
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-border bg-card text-[12px] font-medium shadow-[0_2px_12px_-8px_rgba(23,33,28,0.4)] transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+        >
+          <SquarePenIcon className="size-3.5" /> New conversation
+        </button>
+      </div>
+      <div className="shrink-0 border-t border-border/70 px-3 py-2.5">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-2 h-8 justify-start gap-2 px-2 text-[11px] font-normal text-muted-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
+          <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-1 h-8 justify-start gap-2 px-2 text-[11px] font-normal text-muted-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
           <ModeToggle className="-mr-1 size-8" />
         </div>
-        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground"><HardDriveIcon className="size-3" /> Stored in this browser</p>
+        <p className="mt-1 flex items-center gap-1.5 px-2 text-[10px] text-muted-foreground"><HardDriveIcon className="size-3" /> Stored in this browser</p>
       </div>
     </aside>
+  );
+
+  const composer = (hero: boolean) => (
+    <PromptBox
+      key={chatVersion}
+      onSubmit={(text) => void handleAsk(text)}
+      onStop={handleStop}
+      isBusy={isBusy}
+      disabled={!history.ready || !library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
+      placeholder={composerPlaceholder}
+      className={hero ? "w-full" : undefined}
+      showHint={!hero}
+      onAttach={() => inputRef.current?.click()}
+      attachDisabled={locked || !!upload}
+    >
+      <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
+      <span className="truncate" title={selectedDocuments.map((document) => document.fileName).join("\n")}>{selectedDocuments.length ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in context` : "No files selected"}</span>
+    </PromptBox>
   );
 
   return (
@@ -335,20 +436,8 @@ export default function WorkspacePage() {
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
         onDrop={(event) => { event.preventDefault(); setDragging(false); void handleFiles(Array.from(event.dataTransfer.files)); }}
       >
-        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden size-8 md:inline-flex"
-              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-              title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-              aria-expanded={isSidebarOpen}
-              aria-controls="desktop-workspace-sidebar"
-              onClick={() => setIsSidebarOpen((open) => !open)}
-            >
-              <PanelLeftIcon className="size-4" />
-            </Button>
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-8">
+          <div className="flex min-w-0 items-center gap-2.5">
             <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
               <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open sidebar"><PanelLeftIcon className="size-4" /></Button>} />
               <SheetContent side="left" className="gap-0 data-[side=left]:w-[min(320px,90vw)]">
@@ -357,67 +446,83 @@ export default function WorkspacePage() {
                 {sidebar}
               </SheetContent>
             </Sheet>
-            <h1 className="text-[13px] font-medium">Chat</h1>
+            {!isSidebarOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden size-8 md:inline-flex"
+                aria-label="Expand sidebar"
+                title="Expand sidebar"
+                aria-expanded={false}
+                aria-controls="desktop-workspace-sidebar"
+                onClick={() => setIsSidebarOpen(true)}
+              >
+                <PanelLeftIcon className="size-4" />
+              </Button>
+            )}
+            <div className="flex min-w-0 items-center gap-2 text-[12px]">
+              <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground">Chat</span>
+              <span aria-hidden="true" className="text-muted-foreground/50">/</span>
+              <span className="min-w-0 truncate text-muted-foreground">{history.activeConversation?.title ?? "New chat"}</span>
+            </div>
           </div>
-          <Button variant="ghost" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
+          <Button variant="ghost" size="icon-sm" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} aria-label="New chat" title="New chat" className="text-muted-foreground hover:text-foreground"><SquarePenIcon className="size-4" /></Button>
         </header>
         {history.error && <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive sm:px-8"><p>{history.error}</p><button type="button" onClick={history.retry} className="shrink-0 rounded-sm font-medium underline underline-offset-4">Retry</button></div>}
 
         {!history.ready ? <div role="status" className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Spinner className="size-3.5" /> Loading your conversations…</div> : messages.length > 0 ? (
-          <MessageList
-            key={history.activeId}
-            messages={messages}
-            onCite={handleCite}
-            isBusy={isBusy}
-            getSourceLabel={(id) => {
-              const entry = sourcesRef.current.get(id) ?? savedSources.get(id);
-              return entry ? `${entry.name}${entry.chunk.startPage ? ` · p. ${entry.chunk.startPage}` : ""}` : "Source";
-            }}
-          />
+          <>
+            <MessageList
+              key={history.activeId}
+              messages={messages}
+              onCite={handleCite}
+              isBusy={isBusy}
+              getSourceLabel={(id) => {
+                const entry = sourcesRef.current.get(id) ?? savedSources.get(id);
+                return entry ? `${entry.name}${entry.chunk.startPage ? ` · p. ${entry.chunk.startPage}` : ""}` : "Source";
+              }}
+            />
+            {keyBanner && <div className="mx-auto w-full max-w-[760px] shrink-0 px-4 pt-2 sm:px-8">{keyBanner}</div>}
+            {composer(false)}
+          </>
         ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-8 sm:px-10">
-            <div className="workspace-enter my-auto w-full max-w-[640px] text-center">
-              <span className="mx-auto mb-7 flex size-12 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 text-primary [@media(max-height:700px)]:hidden"><FilesIcon className="size-5" strokeWidth={1.4} /></span>
-              <p className="mb-4 text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase [@media(max-height:700px)]:hidden">Less searching. More understanding.</p>
-              <h2 className="display-face text-[28px] text-foreground min-[380px]:text-[32px] sm:text-[44px]">Your documents.<br /><span className="text-primary italic">A clearer perspective.</span></h2>
-              <p className="mx-auto mt-5 max-w-[360px] text-[13px] leading-6 text-muted-foreground">
-                {library.documents.length === 0
-                  ? "Add your files, ask a question, and get to what matters. Every answer, connected to its source."
-                  : selectedDocuments.length === 0
-                    ? "Select a file in the sidebar to bring it into the conversation."
-                    : "Summarize the details, connect the ideas, or find that one thing you’re looking for."}
-              </p>
-              {library.documents.length === 0 ? (
-                <Button onClick={() => inputRef.current?.click()} disabled={!library.ready || !!upload} variant="outline" className="mt-7 h-10 gap-2 rounded-lg border-primary/20 bg-transparent px-4 text-[12px] font-medium text-primary hover:bg-primary/5"><PlusIcon className="size-3.5" /> Add your first file</Button>
-              ) : (
-                <div className="mt-8 flex flex-wrap justify-center gap-2 [@media(max-height:700px)]:hidden">
-                  {suggestions.map((suggestion, index) => (
-                    <button key={suggestion.label} type="button" disabled={!hasReadableFiles || isRemoving || (index === 2 && selectedDocuments.length < 2)} onClick={() => void handleAsk(suggestion.question)} className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 py-2.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">{suggestion.label}<ArrowUpRightIcon className="size-3" /></button>
-                  ))}
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 sm:px-8">
+            <div className="workspace-enter mx-auto flex w-full max-w-[760px] flex-1 flex-col justify-center py-8 sm:py-12">
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-3 sm:gap-4">
+                  <BookOpenIcon className="size-8 shrink-0 text-primary sm:size-11" strokeWidth={1.2} aria-hidden="true" />
+                  <h2 className="display-face text-[34px] text-foreground min-[380px]:text-[40px] sm:text-[52px]">{greeting}</h2>
                 </div>
-              )}
+                <p className="mx-auto mt-3 max-w-[420px] text-[12px] leading-5 text-muted-foreground sm:text-[13px]">{heroSubline}</p>
+              </div>
+              <div className="mt-7 sm:mt-9">
+                {keyBanner && <div className="mb-3">{keyBanner}</div>}
+                {composer(true)}
+                {library.documents.length === 0 ? (
+                  <div className="mt-4 flex justify-center">
+                    <Button onClick={() => inputRef.current?.click()} disabled={!library.ready || !!upload} variant="outline" className="h-9 gap-2 rounded-full border-primary/20 bg-transparent px-4 text-[11px] font-medium text-primary hover:bg-primary/5"><PlusIcon className="size-3.5" /> Add your first file</Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 flex flex-wrap justify-center gap-1.5 [@media(max-height:700px)]:hidden">
+                      {suggestions.map(({ label, question, icon: Icon }, index) => (
+                        <button key={label} type="button" disabled={!hasReadableFiles || isRemoving || (index === 2 && selectedDocuments.length < 2)} onClick={() => void handleAsk(question)} className="flex items-center gap-1.5 rounded-full border border-border/80 bg-card/60 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40">
+                          <Icon className="size-3.5" strokeWidth={1.6} aria-hidden="true" />{label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-4 flex min-w-0 flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground [@media(max-height:700px)]:hidden">
+                      <SparklesIcon className="size-3.5 shrink-0 text-primary/70" aria-hidden="true" />
+                      <span className="font-medium text-foreground/70">Ideas for you</span>
+                      <button type="button" disabled={!hasReadableFiles || isRemoving} onClick={() => void handleAsk(idea)} className="min-w-0 max-w-full text-left underline-offset-4 hover:text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50">{idea}</button>
+                      <button type="button" aria-label="Show another idea" title="Show another idea" onClick={() => setIdeaIndex((index) => (index + 1) % ideas.length)} className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><RefreshCwIcon className="size-3" /></button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
-
-        {!settings.hasKey && library.documents.length > 0 && (
-          <div className="mx-auto flex w-full max-w-[824px] shrink-0 items-center justify-between gap-4 px-4 pt-2 sm:px-8">
-            <p className="text-[12px] text-muted-foreground">Connect your Groq API key to start chatting.</p>
-            <button type="button" onClick={() => setIsSettingsOpen(true)} className="shrink-0 rounded-md py-2 text-[12px] font-medium text-primary hover:underline">Connect AI <span aria-hidden="true">↗</span></button>
-          </div>
-        )}
-        <PromptBox
-          key={chatVersion}
-          onSubmit={(text) => void handleAsk(text)}
-          onStop={handleStop}
-          isBusy={isBusy}
-          disabled={!history.ready || !library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
-          placeholder={!history.ready ? "Loading your conversations…" : !library.documents.length ? "Your next insight starts with a file…" : !selectedDocuments.length ? "Select a file to start a conversation…" : !hasReadableFiles ? "Add a PDF with readable text to chat…" : !settings.hasKey ? "Connect AI to ask your first question…" : "Ask anything about your files…"}
-        >
-          <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
-          <span>{selectedDocuments.length ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in this conversation` : "No files selected"}</span>
-          <span className="ml-auto hidden text-[10px] text-muted-foreground/80 sm:inline">Enter to send <span className="mx-1.5">·</span> Shift + Enter for a new line</span>
-        </PromptBox>
 
         {dragging && !locked && !upload && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-background/95 text-primary"><UploadIcon className="size-7" /><p className="text-sm font-medium">Drop your PDFs here</p><p className="text-xs text-muted-foreground">Up to 50 MB per file</p></div>
