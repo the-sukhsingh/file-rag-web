@@ -4,19 +4,9 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/**
- * The trace component marks a running step with `shimmer` (and cancels it with
- * `shimmer-none` under `prefers-reduced-motion`); these are the utilities it
- * expects from the registry.
- */
 @utility shimmer {
   color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    currentColor 0%,
-    color-mix(in oklch, currentColor 40%, transparent) 50%,
-    currentColor 100%
-  );
+  background-image: linear-gradient(90deg, currentColor 0%, color-mix(in oklch, currentColor 40%, transparent) 50%, currentColor 100%);
   background-size: 200% 100%;
   background-clip: text;
   animation: shimmer 1.6s linear infinite;
@@ -29,93 +19,23 @@
 }
 
 @keyframes shimmer {
-  from {
-    background-position: 200% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
-/**
- * The design system in one place: a warm stone canvas, paper-white cards and a
- * single electric indigo accent. Every colour below is a literal from
- * `design.md`; nothing here is derived, so the tokens are the source of truth.
- *
- * The palette lives in `:root` and `.dark` rather than here, so that the
- * names below can flip with the theme. A colour declared in `@theme` is
- * compiled once and never changes, which would leave charcoal text on a
- * near-black canvas.
- */
-@theme {
-  /* Typography — Font Families */
-  --font-geist:
-    "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, sans-serif;
-  --font-cooper-ltbt:
-    "Cooper LtBT", "Playfair Display", ui-serif, Georgia, Cambria, "Times New Roman",
-    serif;
-  --font-geist-mono:
-    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    monospace;
-  --font-datatype:
-    "dataType", "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, Menlo,
-    monospace;
-  --font-ui-sans-serif:
-    "ui-sans-serif", ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-  /* Typography — Scale */
-  --text-caption: 12px;
-  --leading-caption: 1.33;
-  --tracking-caption: 0.48px;
-  --text-body-sm: 14px;
-  --leading-body-sm: 1.43;
-  --text-body: 16px;
-  --leading-body: 1.5;
-  --text-subheading: 18px;
-  --leading-subheading: 1.56;
-  --text-heading-sm: 20px;
-  --leading-heading-sm: 1.38;
-  --text-heading: 40px;
-  --leading-heading: 1.2;
-  --text-display: 80px;
-  --leading-display: 1.1;
-
-  /*
-   * Spacing and radii are left to Tailwind's own scale on purpose. Naming a
-   * token `--spacing-16` here would replace the numeric scale, and every
-   * `p-4` in the app would become 16px of *additional* padding rather than
-   * 16px of padding. The design brief's 8px base unit is what Tailwind's
-   * default scale already is.
-
-   * Border Radius */
-  --radius-tags: 8px;
-  --radius-cards: 16px;
-  --radius-links: 8px;
-  --radius-pills: 9999px;
-  --radius-inputs: 12px;
-  --radius-buttons: 8px;
-
-  /* Shadows */
-  --shadow-xl:
-    rgba(0, 0, 0, 0.1) 0px 20px 25px -5px, rgba(0, 0, 0, 0.1) 0px 8px 10px -6px;
-
-  /* Layout */
-  --page-max-width: 1200px;
-  --section-gap: 80px;
-  --card-padding: 24px;
-  --element-gap: 16px;
+@keyframes workspace-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @theme inline {
+  --font-sans: var(--font-ui);
+  --font-heading: var(--font-ui);
+  --font-display: var(--font-editorial);
+  --font-mono: var(--font-code);
+  --font-numeric: var(--font-code);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  /*
-   * The palette. These are referenced rather than declared so that the dark
-   * theme can swap their values, and the classes built from them - `text-
-   * charcoal`, `bg-paper-white`, `border-stone-mist` - follow along.
-   */
   --color-warm-bone: var(--warm-bone);
   --color-paper-white: var(--surface);
   --color-stone-mist: var(--stone-mist);
@@ -123,47 +43,42 @@
   --color-charcoal: var(--charcoal);
   --color-obsidian: var(--obsidian);
   --color-pebble: var(--pebble);
-  --color-electric-indigo: var(--electric-indigo);
-  --color-deep-violet: var(--deep-violet);
+  --color-electric-indigo: var(--primary);
+  --color-deep-violet: var(--primary-hover);
   --color-terracotta: var(--terracotta);
-  --color-lichen-green: var(--lichen-green);
+  --color-lichen-green: var(--primary);
   --color-tide-teal: var(--tide-teal);
-  --color-alarm-red: var(--alarm-red);
-  --color-sapphire-link: var(--sapphire-link);
-  --font-sans: var(--font-geist);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist);
-  --font-display: var(--font-cooper-ltbt);
-  --font-numeric: var(--font-datatype);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-alarm-red: var(--destructive);
+  --color-sapphire-link: var(--primary);
+  --color-sidebar-ring: var(--ring);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-accent-foreground: var(--foreground);
+  --color-sidebar-accent: var(--accent);
+  --color-sidebar-primary-foreground: var(--primary-foreground);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-foreground: var(--foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+  --color-chart-5: var(--muted-foreground);
+  --color-chart-4: var(--primary);
+  --color-chart-3: var(--tide-teal);
+  --color-chart-2: var(--terracotta);
+  --color-chart-1: var(--primary);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-foreground: var(--foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-secondary: var(--muted);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-popover: var(--surface);
+  --color-card-foreground: var(--foreground);
+  --color-card: var(--surface);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -173,190 +88,110 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/**
- * Light theme, straight from `design.md`. Warm bone canvas, paper-white
- * surfaces, hairline stone borders and a single electric indigo accent that is
- * reserved for primary actions.
- */
 :root {
-  /* The palette, straight from `design.md`. */
-  --warm-bone: #fafaf9;
-  --paper-white: #ffffff;
-  --stone-mist: #e7e5e4;
-  --bark-grey: #79716b;
-  --charcoal: #292524;
-  --obsidian: #0c0a09;
-  --pebble: #a6a09b;
-  --electric-indigo: #615fff;
-  --deep-violet: #4f39f6;
-  --terracotta: #d97757;
-  --lichen-green: #5ea500;
-  --tide-teal: #22b8cd;
-  --alarm-red: #ff0000;
-  --sapphire-link: #007ebb;
-
-  --background: #fafaf9;
-  --foreground: #292524;
-  /* The raised surface: cards, panels and the bands that sit on the canvas. */
+  color-scheme: light;
+  --background: #fdfdfb;
+  --foreground: #262c29;
   --surface: #ffffff;
-  --card: #ffffff;
-  --card-foreground: #292524;
-  --popover: #ffffff;
-  --popover-foreground: #292524;
-  --primary: #615fff;
+  --sidebar: #f5f6f2;
+  --warm-bone: #f5f6f2;
+  --stone-mist: #e4e7df;
+  --bark-grey: #6b736d;
+  --charcoal: #262c29;
+  --obsidian: #17211c;
+  --pebble: #7b837c;
+  --primary: #355b48;
+  --primary-hover: #284735;
   --primary-foreground: #ffffff;
-  --secondary: #f5f5f4;
-  --secondary-foreground: #292524;
-  --muted: #f5f5f4;
-  --muted-foreground: #79716b;
-  --accent: #f5f5f4;
-  --accent-foreground: #292524;
-  --destructive: #ff0000;
-  --border: #e7e5e4;
-  --input: #e7e5e4;
-  --ring: #615fff;
-  --chart-1: #615fff;
-  --chart-2: #d97757;
-  --chart-3: #22b8cd;
-  --chart-4: #5ea500;
-  --chart-5: #79716b;
-  --radius: 0.5rem;
-  --sidebar: #fafaf9;
-  --sidebar-foreground: #292524;
-  --sidebar-primary: #615fff;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f5f5f4;
-  --sidebar-accent-foreground: #292524;
-  --sidebar-border: #e7e5e4;
-  --sidebar-ring: #615fff;
+  --terracotta: #a97452;
+  --tide-teal: #54827c;
+  --muted: #eef0ea;
+  --muted-foreground: #6b736d;
+  --accent: #e9ede5;
+  --destructive: #b43f39;
+  --border: #e4e7df;
+  --input: #dce1d7;
+  --ring: #355b48;
+  --radius: 0.625rem;
 }
 
-/**
- * The brief is a light theme, so the dark palette is a warm charcoal that
- * keeps the same relationships: darker canvas, lifted surfaces, the same
- * single violet accent.
- *
- * The palette names keep their literal meaning - `paper-white` is still the
- * white paper, `charcoal` is still the charcoal. What flips is the set of
- * *roles* the semantic tokens point at, so `bg-card` is the raised surface in
- * both themes and `text-foreground` is the main text in both themes.
- */
 .dark {
-  --warm-bone: #171514;
-  --paper-white: #1c1a19;
-  --stone-mist: #292524;
-  --bark-grey: #a6a09b;
-  --charcoal: #fafaf9;
-  --obsidian: #0c0a09;
-  --pebble: #79716b;
-  --electric-indigo: #7b7aff;
-  --deep-violet: #615fff;
-  --terracotta: #e08a6c;
-  --lichen-green: #7bc42a;
-  --tide-teal: #3fd0e6;
-  --alarm-red: #ff5555;
-  --sapphire-link: #3aa5dd;
-
-  --background: #0c0a09;
-  --foreground: #fafaf9;
-  /* The raised surface: cards, panels and the bands that sit on the canvas. */
-  --surface: #1c1a19;
-  --card: #171514;
-  --card-foreground: #fafaf9;
-  --popover: #171514;
-  --popover-foreground: #fafaf9;
-  --primary: #7b7aff;
-  --primary-foreground: #0c0a09;
-  --secondary: #292524;
-  --secondary-foreground: #fafaf9;
-  --muted: #292524;
-  --muted-foreground: #a6a09b;
-  --accent: #292524;
-  --accent-foreground: #fafaf9;
-  --destructive: #ff5555;
-  --border: #292524;
-  --input: #292524;
-  --ring: #7b7aff;
-  --chart-1: #7b7aff;
-  --chart-2: #e08a6c;
-  --chart-3: #3fd0e6;
-  --chart-4: #7bc42a;
-  --chart-5: #a6a09b;
-  --sidebar: #0c0a09;
-  --sidebar-foreground: #fafaf9;
-  --sidebar-primary: #7b7aff;
-  --sidebar-primary-foreground: #0c0a09;
-  --sidebar-accent: #292524;
-  --sidebar-accent-foreground: #fafaf9;
-  --sidebar-border: #292524;
-  --sidebar-ring: #615fff;
+  color-scheme: dark;
+  --background: #191e1b;
+  --foreground: #e7ebe3;
+  --surface: #202622;
+  --sidebar: #151a17;
+  --warm-bone: #1c221e;
+  --stone-mist: #333b34;
+  --bark-grey: #a1ada2;
+  --charcoal: #e7ebe3;
+  --obsidian: #101410;
+  --pebble: #8e9b90;
+  --primary: #a4c4a8;
+  --primary-hover: #b6d4b9;
+  --primary-foreground: #19271d;
+  --terracotta: #d0a184;
+  --tide-teal: #8bb4ad;
+  --muted: #293129;
+  --muted-foreground: #a1ada2;
+  --accent: #2d382e;
+  --destructive: #f09b90;
+  --border: #333b34;
+  --input: #3b453c;
+  --ring: #a4c4a8;
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-background text-foreground; }
   html {
     @apply font-sans;
-    font-feature-settings: "cv11", "ss01";
-    font-variant-ligatures: contextual;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  ::selection {
-    background-color: color-mix(in srgb, #615fff 20%, transparent);
-  }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+  button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  ::selection { background-color: color-mix(in srgb, var(--primary) 20%, transparent); }
+  * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 }
 
 @layer components {
-  /**
-   * A section eyebrow: uppercase mono label with the widest tracking in the
-   * system (0.10em).
-   */
-  .eyebrow {
-    @apply font-mono text-[12px] font-semibold uppercase tracking-[0.10em] text-bark-grey;
-  }
-
-  /**
-   * A micro-label: uppercase mono label with the tighter tag tracking
-   * (0.04em).
-   */
-  .tag-label {
-    @apply font-mono text-[12px] font-medium uppercase tracking-[0.04em];
-  }
-
-  /**
-   * The display face, used for headlines only. One word per line is set in
-   * italic for emphasis.
-   */
+  .eyebrow { @apply font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground; }
+  .tag-label { @apply font-mono text-[11px] font-medium uppercase tracking-[0.04em]; }
   .display-face {
-    font-family: var(--font-cooper-ltbt);
+    font-family: var(--font-editorial);
     font-weight: 400;
-    line-height: 1.1;
-    letter-spacing: normal;
+    line-height: 1.18;
+    letter-spacing: -0.04em;
   }
+  .workspace-enter { animation: workspace-enter 500ms ease-out both; }
+  .chat-prose { overflow-wrap: anywhere; }
+  .chat-prose > :first-child { margin-top: 0; }
+  .chat-prose > :last-child { margin-bottom: 0; }
+  .chat-prose p { margin-block: 0.8em; }
+  .chat-prose h1, .chat-prose h2, .chat-prose h3, .chat-prose h4 {
+    margin-block: 1.4em 0.5em;
+    font-size: 1.05em;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .chat-prose ul, .chat-prose ol { margin-block: 0.75em; padding-left: 1.4em; }
+  .chat-prose ul { list-style: disc; }
+  .chat-prose ol { list-style: decimal; }
+  .chat-prose li { margin-block: 0.35em; padding-left: 0.2em; }
+  .chat-prose strong { font-weight: 600; }
+  .chat-prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+  .chat-prose blockquote { border-left: 2px solid var(--border); padding-left: 1em; color: var(--muted-foreground); }
+  .chat-prose code { border-radius: 4px; background: var(--muted); padding: 0.15em 0.35em; font-size: 0.85em; }
+  .chat-prose pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--warm-bone); padding: 1em; }
+  .chat-prose pre code { padding: 0; background: transparent; }
+  .chat-prose hr { margin-block: 1.5em; }
+  .katex-display { @apply my-3 overflow-x-auto overflow-y-hidden; padding-bottom: 2px; }
+  .katex { @apply text-foreground; font-size: 1.02em; }
+  .chat-prose .katex, .prose .katex { @apply max-w-full; }
+}
 
-  /**
-   * Rendered maths.
-   *
-   * A display formula is often wider than the column it sits in, so it
-   * scrolls sideways rather than being cut off. The inline maths stays with
-   * the text around it.
-   */
-  .katex-display {
-    @apply my-3 overflow-x-auto overflow-y-hidden;
-    padding-bottom: 2px;
-  }
-
-  .katex {
-    @apply text-charcoal;
-    font-size: 1.02em;
-  }
-
-  /* A long formula inside a paragraph scrolls with it, not the paragraph. */
-  .prose .katex {
-    @apply max-w-full;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-enter { animation: none; }
 }

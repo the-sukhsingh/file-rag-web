@@ -1,44 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Lora } from "next/font/google";
+import { DM_Sans, Geist_Mono, Lora } from "next/font/google";
 import "./globals.css";
 import Provider from "@/components/Provider";
 
-/**
- * The design brief asks for Geist (UI and body), Geist Mono (code and
- * uppercase tags) and a Cooper-like display serif for headlines. Lora is the
- * stand-in for Cooper LtBT named in the brief.
- */
-const geistSans = Geist({
-  variable: "--font-geist",
+const uiFont = DM_Sans({
+  variable: "--font-ui",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const codeFont = Geist_Mono({
+  variable: "--font-code",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500"],
 });
 
-const displaySerif = Lora({
-  variable: "--font-cooper-ltbt",
+const editorialFont = Lora({
+  variable: "--font-editorial",
   subsets: ["latin"],
   weight: ["400", "500"],
   style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
-  title: "Quarry — a private library for your documents",
+  title: "Quarry — clarity from your documents",
   description:
-    "Import PDFs, let them be split into chapters and chunks, then ask questions of any folder. Everything runs in your browser, with your own API key.",
+    "A quiet workspace for your documents. Add PDFs, ask questions, and get answers with sources. Your library stays in your browser; relevant text is sent to Groq when you chat.",
 };
 
-/**
- * Sets the theme before the page paints.
- *
- * Without this the page would render in the light theme and then snap to the
- * dark one once React mounted, which reads as a glitch.
- */
 const themeScript = `
 (function () {
   try {
@@ -56,7 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${displaySerif.variable} antialiased`}
+      className={`${uiFont.variable} ${codeFont.variable} ${editorialFont.variable} antialiased`}
       suppressHydrationWarning
     >
       <head>
