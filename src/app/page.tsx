@@ -34,6 +34,7 @@ export default function WorkspacePage() {
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isFilesOpen, setIsFilesOpen] = React.useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
   const [upload, setUpload] = React.useState<UploadState | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = React.useState<DocumentRecord | null>(null);
@@ -57,6 +58,7 @@ export default function WorkspacePage() {
     if (uploadingRef.current || locked || !files.length) return;
     uploadingRef.current = true;
     if (window.matchMedia("(max-width: 767px)").matches) setIsFilesOpen(true);
+    else setIsSidebarOpen(true);
     setUploadError(null);
     const errors: string[] = [];
     try {
@@ -218,7 +220,7 @@ export default function WorkspacePage() {
   return (
     <div className="flex h-dvh min-h-0 overflow-hidden bg-background">
       <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple hidden aria-label="Upload PDF files" onChange={(event) => { void handleFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
-      <div className="hidden w-[284px] shrink-0 border-r border-border/80 md:block lg:w-[300px]">{sidebar}</div>
+      <div id="desktop-file-sidebar" className={isSidebarOpen ? "hidden w-[284px] shrink-0 border-r border-border/80 md:block lg:w-[300px]" : "hidden"}>{sidebar}</div>
 
       <main
         id="chat"
@@ -231,6 +233,18 @@ export default function WorkspacePage() {
       >
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden size-8 md:inline-flex"
+              aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              aria-expanded={isSidebarOpen}
+              aria-controls="desktop-file-sidebar"
+              onClick={() => setIsSidebarOpen((open) => !open)}
+            >
+              <PanelLeftIcon className="size-4" />
+            </Button>
             <Sheet open={isFilesOpen} onOpenChange={setIsFilesOpen}>
               <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open files"><PanelLeftIcon className="size-4" /></Button>} />
               <SheetContent side="left" className="gap-0 data-[side=left]:w-[min(320px,90vw)]">
