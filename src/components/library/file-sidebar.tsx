@@ -5,19 +5,15 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   FileTextIcon,
-  HardDriveIcon,
   MoreHorizontalIcon,
   PlusIcon,
   SearchIcon,
-  Settings2Icon,
   Trash2Icon,
   UploadIcon,
   XIcon,
 } from "lucide-react";
 import { cn } from "cn";
 
-import { ModeToggle } from "@/components/theme/ThemeToggle";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +41,6 @@ export function FileSidebar({
   onDismissError,
   disabled,
   indexing,
-  onOpenSettings,
 }: {
   documents: DocumentRecord[];
   ready: boolean;
@@ -61,7 +56,6 @@ export function FileSidebar({
   onDismissError: () => void;
   disabled: boolean;
   indexing: { done: number; total: number } | null;
-  onOpenSettings: () => void;
 }) {
   const [query, setQuery] = React.useState("");
   const [dragging, setDragging] = React.useState(false);
@@ -71,16 +65,8 @@ export function FileSidebar({
     .toSorted((a, b) => b.createdAt - a.createdAt);
 
   return (
-    <aside className="flex h-full min-h-0 flex-col bg-sidebar" aria-label="Your files">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border/60 px-5">
-        <svg viewBox="0 0 32 32" fill="none" className="size-6 text-primary" aria-hidden="true">
-          <path d="M7 5h13l6 6v15H7V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          <path d="M20 5v7h6M3 10v20h17M12 17h9M12 21h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <span className="text-[23px] font-semibold tracking-[-0.055em]">quarry<span className="text-primary">.</span></span>
-      </div>
-
-      <div className="shrink-0 px-5 pt-6 pb-5">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-5 pt-5 pb-5">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="display-face text-[23px]">Your files</h2>
           <span className="font-mono text-[12px] tabular-nums text-muted-foreground" aria-label={`${documents.length} files`}>{documents.length.toString().padStart(2, "0")}</span>
@@ -202,19 +188,12 @@ export function FileSidebar({
         )}
       </div>
 
-      <div className="mx-5 shrink-0 border-t border-border pt-3 pb-3">
-        {documents.length > 0 && (
-          <p className="mb-3 flex items-start gap-2 text-[11px] leading-5 text-muted-foreground" role="status">
-            {indexing ? <Spinner className="mt-1 size-3 shrink-0" /> : <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", selectedCount ? "bg-primary" : "bg-muted-foreground/50")} aria-hidden="true" />}
-            {indexing ? `Improving search · ${indexing.done} of ${indexing.total}` : `${selectedCount} of ${documents.length} files selected for chat`}
-          </p>
-        )}
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={onOpenSettings} className="-ml-2 h-8 justify-start gap-2 px-2 text-[11px] font-normal text-muted-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
-          <ModeToggle className="-mr-1 size-8" />
-        </div>
-        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground"><HardDriveIcon className="size-3" /> Stored in this browser</p>
-      </div>
-    </aside>
+      {documents.length > 0 && (
+        <p className="mx-5 flex shrink-0 items-start gap-2 py-3 text-[11px] leading-5 text-muted-foreground" role="status">
+          {indexing ? <Spinner className="mt-1 size-3 shrink-0" /> : <span className={cn("mt-[7px] size-1.5 shrink-0 rounded-full", selectedCount ? "bg-primary" : "bg-muted-foreground/50")} aria-hidden="true" />}
+          {indexing ? `Improving search · ${indexing.done} of ${indexing.total}` : `${selectedCount} of ${documents.length} files selected for chat`}
+        </p>
+      )}
+    </div>
   );
 }

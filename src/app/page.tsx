@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRightIcon, FileTextIcon, FilesIcon, HistoryIcon, PanelLeftIcon, PlusIcon, UploadIcon } from "lucide-react";
+import { ArrowUpRightIcon, FileTextIcon, FilesIcon, HardDriveIcon, HistoryIcon, PanelLeftIcon, PlusIcon, Settings2Icon, UploadIcon } from "lucide-react";
 
-import { ChatHistoryDialog } from "@/components/chat/chat-history-dialog";
+import { ChatHistory } from "@/components/chat/chat-history";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
 import { useChatHistory } from "@/components/chat/use-chat-history";
@@ -11,10 +11,12 @@ import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { FileSidebar, type UploadState } from "@/components/library/file-sidebar";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
+import { ModeToggle } from "@/components/theme/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import { listChunksByDocument } from "@/lib/library/store";
@@ -27,17 +29,32 @@ const suggestions = [
 ];
 
 type SourcePreview = { title: string; documentId: string; chunks: SourceChunk[] | null; error?: string };
+type SidebarView = "files" | "chats";
+
+function subscribeSidebarView(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+
+function readSidebarView(): SidebarView {
+  try {
+    return window.localStorage.getItem("quarry-sidebar-view") === "chats" ? "chats" : "files";
+  } catch {
+    return "files";
+  }
+}
 
 export default function WorkspacePage() {
   const library = useLibrary();
   const settings = useSettings();
   const history = useChatHistory();
   const messages = history.activeConversation?.messages ?? [];
-  const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+  const savedSidebarView = React.useSyncExternalStore(subscribeSidebarView, readSidebarView, () => "files" as const);
+  const [sidebarView, setSidebarView] = React.useState<SidebarView | null>(null);
   const [draftExcludedIds, setDraftExcludedIds] = React.useState(new Set<string>());
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
-  const [isFilesOpen, setIsFilesOpen] = React.useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
   const [upload, setUpload] = React.useState<UploadState | null>(null);
   const [uploadError, setUploadError] = React.useState<string | null>(null);
@@ -63,6 +80,15 @@ export default function WorkspacePage() {
   const locked = isBusy || isRemoving || !history.ready;
   const savedSources = new Map(history.activeConversation?.sources.map((entry) => [entry.chunk.id, entry]) ?? []);
 
+  const changeSidebarView = (view: SidebarView) => {
+    setSidebarView(view);
+    try {
+      window.localStorage.setItem("quarry-sidebar-view", view);
+    } catch {
+      // The view remains usable when browser storage is unavailable.
+    }
+  };
+
   const setSelection = (next: Set<string>) => {
     if (history.activeConversation) history.updateConversation(history.activeConversation.id, (conversation) => ({ ...conversation, documentIds: library.documents.filter((document) => !next.has(document.id)).map((document) => document.id) }));
     else setDraftExcludedIds(next);
@@ -73,14 +99,15 @@ export default function WorkspacePage() {
     history.selectConversation(id);
     sourcesRef.current.clear();
     setSource(null);
-    setIsHistoryOpen(false);
+    setIsMobileSidebarOpen(false);
     setChatVersion((value) => value + 1);
   };
 
   const handleFiles = async (files: File[]) => {
     if (uploadingRef.current || locked || !files.length) return;
     uploadingRef.current = true;
-    if (window.matchMedia("(max-width: 767px)").matches) setIsFilesOpen(true);
+    changeSidebarView("files");
+    if (window.matchMedia("(max-width: 767px)").matches) setIsMobileSidebarOpen(true);
     else setIsSidebarOpen(true);
     setUploadError(null);
     const errors: string[] = [];
@@ -196,7 +223,7 @@ export default function WorkspacePage() {
   };
 
   const handlePreview = async (document: DocumentRecord) => {
-    setIsFilesOpen(false);
+    setIsMobileSidebarOpen(false);
     const preview: SourcePreview = { title: document.fileName, documentId: document.id, chunks: null };
     setSource(preview);
     try {
@@ -233,33 +260,71 @@ export default function WorkspacePage() {
   };
 
   const sidebar = (
-    <FileSidebar
-      documents={library.documents}
-      ready={library.ready}
-      excludedIds={excludedIds}
-      onToggle={(id) => {
-        const next = new Set(excludedIds);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        setSelection(next);
-      }}
-      onSelectAll={() => setSelection(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
-      onPreview={(document) => void handlePreview(document)}
-      onRemove={(document) => { setIsFilesOpen(false); setRemovalError(null); setPendingRemoval(document); }}
-      onPickFiles={() => inputRef.current?.click()}
-      onFiles={(files) => void handleFiles(files)}
-      upload={upload}
-      error={uploadError}
-      onDismissError={() => setUploadError(null)}
-      disabled={locked}
-      indexing={library.indexing}
-      onOpenSettings={() => { setIsFilesOpen(false); setIsSettingsOpen(true); }}
-    />
+    <aside className="flex h-full min-h-0 flex-col bg-sidebar" aria-label="Workspace sidebar">
+      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border/60 px-5">
+        <svg viewBox="0 0 32 32" fill="none" className="size-6 text-primary" aria-hidden="true">
+          <path d="M7 5h13l6 6v15H7V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M20 5v7h6M3 10v20h17M12 17h9M12 21h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="text-[23px] font-semibold tracking-[-0.055em]">quarry<span className="text-primary">.</span></span>
+      </div>
+      <Tabs value={sidebarView ?? savedSidebarView} onValueChange={(value) => { if (value === "files" || value === "chats") changeSidebarView(value); }} className="min-h-0 flex-1 gap-0">
+        <TabsList aria-label="Sidebar view" activateOnFocus className="mx-5 mt-4 w-auto shrink-0 bg-border/40">
+          <TabsTrigger value="files" className="gap-2 text-[11px]"><FilesIcon className="size-3.5" /> Files</TabsTrigger>
+          <TabsTrigger value="chats" className="gap-2 text-[11px]"><HistoryIcon className="size-3.5" /> Chats</TabsTrigger>
+        </TabsList>
+        <TabsContent value="files" keepMounted className="flex min-h-0 flex-col data-[hidden]:hidden">
+          <FileSidebar
+            documents={library.documents}
+            ready={library.ready}
+            excludedIds={excludedIds}
+            onToggle={(id) => {
+              const next = new Set(excludedIds);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              setSelection(next);
+            }}
+            onSelectAll={() => setSelection(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
+            onPreview={(document) => void handlePreview(document)}
+            onRemove={(document) => { setIsMobileSidebarOpen(false); setRemovalError(null); setPendingRemoval(document); }}
+            onPickFiles={() => inputRef.current?.click()}
+            onFiles={(files) => void handleFiles(files)}
+            upload={upload}
+            error={uploadError}
+            onDismissError={() => setUploadError(null)}
+            disabled={locked}
+            indexing={library.indexing}
+          />
+        </TabsContent>
+        <TabsContent value="chats" keepMounted className="flex min-h-0 flex-col data-[hidden]:hidden">
+          <ChatHistory
+            conversations={history.conversations}
+            activeId={history.activeId}
+            onSelect={openConversation}
+            onNewChat={() => openConversation(null)}
+            onDelete={(id) => {
+              if (locked || uploadingRef.current) return;
+              if (id === history.activeId) openConversation(null);
+              history.deleteConversation(id);
+            }}
+            ready={history.ready}
+            disabled={locked || !!upload}
+          />
+        </TabsContent>
+      </Tabs>
+      <div className="mx-5 shrink-0 border-t border-border py-3">
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-2 h-8 justify-start gap-2 px-2 text-[11px] font-normal text-muted-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
+          <ModeToggle className="-mr-1 size-8" />
+        </div>
+        <p className="mt-2 flex items-center gap-1.5 text-[10px] text-muted-foreground"><HardDriveIcon className="size-3" /> Stored in this browser</p>
+      </div>
+    </aside>
   );
 
   return (
     <div className="flex h-dvh min-h-0 overflow-hidden bg-background">
       <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple hidden aria-label="Upload PDF files" onChange={(event) => { void handleFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
-      <div id="desktop-file-sidebar" className={isSidebarOpen ? "hidden w-[284px] shrink-0 border-r border-border/80 md:block lg:w-[300px]" : "hidden"}>{sidebar}</div>
+      <div id="desktop-workspace-sidebar" className={isSidebarOpen ? "hidden w-[284px] shrink-0 border-r border-border/80 md:block lg:w-[300px]" : "hidden"}>{sidebar}</div>
 
       <main
         id="chat"
@@ -279,25 +344,22 @@ export default function WorkspacePage() {
               aria-label={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
               title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
               aria-expanded={isSidebarOpen}
-              aria-controls="desktop-file-sidebar"
+              aria-controls="desktop-workspace-sidebar"
               onClick={() => setIsSidebarOpen((open) => !open)}
             >
               <PanelLeftIcon className="size-4" />
             </Button>
-            <Sheet open={isFilesOpen} onOpenChange={setIsFilesOpen}>
-              <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open files"><PanelLeftIcon className="size-4" /></Button>} />
+            <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+              <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open sidebar"><PanelLeftIcon className="size-4" /></Button>} />
               <SheetContent side="left" className="gap-0 data-[side=left]:w-[min(320px,90vw)]">
-                <SheetTitle className="sr-only">Your files</SheetTitle>
-                <SheetDescription className="sr-only">Upload and select the files to use in your conversation.</SheetDescription>
+                <SheetTitle className="sr-only">Files and chats</SheetTitle>
+                <SheetDescription className="sr-only">Choose files to manage your documents, or chats to reopen a conversation.</SheetDescription>
                 {sidebar}
               </SheetContent>
             </Sheet>
             <h1 className="text-[13px] font-medium">Chat</h1>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" disabled={!history.ready} onClick={() => setIsHistoryOpen(true)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><HistoryIcon className="size-3.5" /> History</Button>
-            <Button variant="ghost" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
-          </div>
+          <Button variant="ghost" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} className="h-8 gap-1.5 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
         </header>
         {history.error && <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive sm:px-8"><p>{history.error}</p><button type="button" onClick={history.retry} className="shrink-0 rounded-sm font-medium underline underline-offset-4">Retry</button></div>}
 
@@ -363,19 +425,6 @@ export default function WorkspacePage() {
       </main>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
-      <ChatHistoryDialog
-        open={isHistoryOpen}
-        onOpenChange={setIsHistoryOpen}
-        conversations={history.conversations}
-        activeId={history.activeId}
-        onSelect={openConversation}
-        onDelete={(id) => {
-          if (locked || uploadingRef.current) return;
-          if (id === history.activeId) openConversation(null);
-          history.deleteConversation(id);
-        }}
-        disabled={locked || !!upload}
-      />
       <Dialog open={!!pendingRemoval} onOpenChange={(open) => { if (!open && !isRemoving) setPendingRemoval(null); }}>
         <DialogContent>
           <DialogHeader>
