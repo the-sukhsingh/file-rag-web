@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, HardDriveIcon, KeyRoundIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
+import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, KeyRoundIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { ChatHistory } from "@/components/chat/chat-history";
@@ -295,19 +295,12 @@ export default function WorkspacePage() {
 
   const sidebar = (
     <aside className="flex h-full min-h-0 flex-col bg-sidebar" aria-label="Workspace sidebar">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
-        <svg viewBox="0 0 32 32" fill="none" className="size-6 shrink-0 text-primary" aria-hidden="true">
-          <path d="M7 5h13l6 6v15H7V5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          <path d="M20 5v7h6M3 10v20h17M12 17h9M12 21h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <div className="min-w-0 flex-1">
-          <p className="text-[20px] leading-none font-semibold tracking-[-0.055em]">quarry<span className="text-primary">.</span></p>
-          <p className="mt-1 truncate text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">Document workspace</p>
-        </div>
+      <div className="flex h-14 shrink-0 items-center px-3">
+        <p className="display-face text-[21px] leading-none">quarry<span className="text-primary">.</span></p>
         <Button
           variant="ghost"
           size="icon-sm"
-          className="hidden text-muted-foreground md:inline-flex"
+          className="-mr-1.5 ml-auto hidden text-muted-foreground/70 hover:text-foreground md:inline-flex"
           aria-label="Collapse sidebar"
           title="Collapse sidebar"
           onClick={() => setIsSidebarOpen(false)}
@@ -315,34 +308,31 @@ export default function WorkspacePage() {
           <PanelLeftCloseIcon className="size-4" />
         </Button>
       </div>
-      <nav aria-label="Workspace views" className="shrink-0 px-3 pt-1">
-        <p className="px-3 pb-1.5 text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">Workspace</p>
-        <div className="space-y-0.5">
+      <nav aria-label="Workspace views" className="shrink-0 px-3">
+        <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted/60 p-0.5">
           <button
             type="button"
             onClick={() => changeSidebarView("files")}
             aria-current={activeView === "files" ? "page" : undefined}
             className={cn(
-              "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[12px] transition-colors",
-              activeView === "files" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.06)]" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+              "flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[11px] transition-colors",
+              activeView === "files" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.07)]" : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <FilesIcon className="size-4" strokeWidth={1.7} />
+            <FilesIcon className="size-3.5" strokeWidth={1.8} />
             Files
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/70">{library.documents.length}</span>
           </button>
           <button
             type="button"
             onClick={() => changeSidebarView("chats")}
             aria-current={activeView === "chats" ? "page" : undefined}
             className={cn(
-              "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-[12px] transition-colors",
-              activeView === "chats" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.06)]" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+              "flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[11px] transition-colors",
+              activeView === "chats" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.07)]" : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <MessagesSquareIcon className="size-4" strokeWidth={1.7} />
+            <MessagesSquareIcon className="size-3.5" strokeWidth={1.8} />
             Chats
-            <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/70">{history.conversations.length}</span>
           </button>
         </div>
       </nav>
@@ -384,22 +374,19 @@ export default function WorkspacePage() {
           />
         </div>
       </div>
-      <div className="shrink-0 px-3 pt-2 pb-3">
+      <div className="shrink-0 px-2 pt-1 pb-1">
         <button
           type="button"
           disabled={!history.ready || locked || !!upload || messages.length === 0}
           onClick={() => openConversation(null)}
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-border bg-card text-[12px] font-medium shadow-[0_2px_12px_-8px_rgba(23,33,28,0.4)] transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+          className="flex h-8 w-full items-center gap-2 rounded-lg px-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         >
           <SquarePenIcon className="size-3.5" /> New conversation
         </button>
       </div>
-      <div className="shrink-0 border-t border-border/70 px-3 py-2.5">
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-1 h-8 justify-start gap-2 px-2 text-[11px] font-normal text-muted-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
-          <ModeToggle className="-mr-1 size-8" />
-        </div>
-        <p className="mt-1 flex items-center gap-1.5 px-2 text-[10px] text-muted-foreground"><HardDriveIcon className="size-3" /> Stored in this browser</p>
+      <div className="flex shrink-0 items-center gap-1 border-t border-border/60 px-2.5 py-1.5">
+        <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-1.5 h-8 gap-2 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
+        <ModeToggle className="ml-auto size-8" />
       </div>
     </aside>
   );

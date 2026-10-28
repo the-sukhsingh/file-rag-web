@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquareIcon, MoreHorizontalIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
+import { MoreHorizontalIcon, SearchIcon, Trash2Icon, XIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,13 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Conversation } from "@/lib/library/types";
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 function relativeTime(timestamp: number, now: number) {
-  const diff = timestamp - now;
-  const magnitude = Math.abs(diff);
-  if (magnitude < 60_000) return "just now";
-  if (magnitude < 3_600_000) return relativeFormat.format(Math.round(diff / 60_000), "minute");
-  if (magnitude < 86_400_000) return relativeFormat.format(Math.round(diff / 3_600_000), "hour");
-  if (magnitude < 7 * 86_400_000) return relativeFormat.format(Math.round(diff / 86_400_000), "day");
+  const diff = now - timestamp;
+  if (diff < 60_000) return "now";
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m`;
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h`;
+  if (diff < 7 * 86_400_000) return `${Math.round(diff / 86_400_000)}d`;
   return dateFormat.format(timestamp);
 }
 
@@ -80,23 +78,21 @@ export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-2 px-2.5 pt-2 pb-1">
-        <h2 className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">Conversations</h2>
-        <span className="font-mono text-[10px] tabular-nums text-muted-foreground/70" aria-label={`${conversations.length} conversations`}>{conversations.length}</span>
+      <div className="flex h-8 shrink-0 items-center justify-end px-3 pb-1">
         <Button
           variant="ghost"
           size="icon-xs"
           aria-label={isSearchOpen ? "Close conversation search" : "Search conversations"}
           aria-expanded={isSearchOpen}
           onClick={() => isSearchOpen ? closeSearch() : setIsSearchOpen(true)}
-          className="ml-auto size-7 text-muted-foreground hover:text-foreground"
+          className="-mr-1 size-7 text-muted-foreground/70 hover:text-foreground"
         >
           {isSearchOpen ? <XIcon className="size-3.5" /> : <SearchIcon className="size-3.5" />}
         </Button>
       </div>
       {isSearchOpen && (
-        <div className="relative mx-2.5 mb-1 shrink-0">
-          <SearchIcon className="pointer-events-none absolute top-2 left-0 size-3.5 text-muted-foreground" />
+        <div className="relative mx-3 mb-1 shrink-0">
+          <SearchIcon className="pointer-events-none absolute top-2 left-0 size-3.5 text-muted-foreground/70" />
           <input
             autoFocus
             aria-label="Search conversations"
@@ -109,29 +105,28 @@ export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready
       )}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {!ready ? (
-          <div role="status" className="flex items-center gap-2 px-2.5 py-6 text-xs text-muted-foreground"><Spinner className="size-3" /> Loading your conversations…</div>
+          <div role="status" className="flex items-center gap-2 px-1 py-6 text-xs text-muted-foreground"><Spinner className="size-3" /> Loading your conversations…</div>
         ) : conversations.length === 0 ? (
-          <div className="px-2.5 pt-8 pb-6">
-            <MessageSquareIcon className="mb-4 size-6 text-primary/60" strokeWidth={1.2} />
-            <p className="text-[13px] font-medium">No conversations yet.</p>
-            <p className="mt-1.5 max-w-52 text-[11px] leading-5 text-muted-foreground">Ask your first question. Your conversations will appear here.</p>
+          <div className="px-1 pt-6 pb-6">
+            <p className="text-[12px] font-medium">No conversations yet.</p>
+            <p className="mt-1.5 max-w-52 text-[11px] leading-5 text-muted-foreground">Ask your first question and it will show up here.</p>
           </div>
         ) : visible.length === 0 ? (
-          <div className="px-2.5 py-8 text-xs leading-5 text-muted-foreground">
+          <div className="px-1 py-8 text-[11px] leading-5 text-muted-foreground">
             <p className="break-words">No conversations match “{query}”.</p>
-            <button type="button" onClick={() => setQuery("")} className="mt-3 text-primary underline underline-offset-4">Clear search</button>
+            <button type="button" onClick={() => setQuery("")} className="mt-2 text-primary underline underline-offset-4">Clear search</button>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div>
             {groups.map((group) => (
               <section key={group.label} aria-label={group.label}>
-                <h3 className="px-2.5 pt-1.5 pb-0.5 text-[9px] font-medium tracking-[0.10em] text-muted-foreground/80 uppercase">{group.label}</h3>
+                <h3 className="px-3 pt-2 pb-1 text-[10px] font-medium text-muted-foreground/70">{group.label}</h3>
                 <ul>
                   {group.items.map((conversation) => {
                     const active = conversation.id === activeId;
                     return (
                       <li key={conversation.id}>
-                        <div className={cn("group flex h-9 items-center rounded-lg pr-1 transition-colors", active ? "bg-primary/8" : "hover:bg-accent/60")}>
+                        <div className={cn("group flex h-8 items-center rounded-lg pr-0.5 transition-colors", active ? "bg-primary/8" : "hover:bg-accent/50")}>
                           <button
                             type="button"
                             disabled={disabled}
@@ -139,18 +134,17 @@ export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready
                             aria-current={active ? "true" : undefined}
                             className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", active ? "bg-primary" : "bg-border")} />
-                            <span className={cn("min-w-0 flex-1 truncate text-[12px] font-medium", active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>{conversation.title}</span>
+                            <span className={cn("min-w-0 flex-1 truncate text-[12px]", active ? "font-medium text-foreground" : "text-muted-foreground group-hover:text-foreground")}>{conversation.title}</span>
                             <time
                               dateTime={new Date(conversation.updatedAt).toISOString()}
                               title={new Date(conversation.updatedAt).toLocaleString()}
-                              className="max-w-[86px] shrink-0 truncate text-[10px] font-normal text-muted-foreground/80"
+                              className="max-w-[86px] shrink-0 truncate text-[10px] font-normal text-muted-foreground/70"
                             >
                               {relativeTime(conversation.updatedAt, reference)}
                             </time>
                           </button>
                           <DropdownMenu>
-                            <DropdownMenuTrigger render={<button type="button" aria-label={`Manage conversation: ${conversation.title}`} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-background hover:text-foreground"><MoreHorizontalIcon className="size-3.5" /></button>} />
+                            <DropdownMenuTrigger render={<button type="button" aria-label={`Manage conversation: ${conversation.title}`} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-background hover:text-foreground max-md:opacity-100"><MoreHorizontalIcon className="size-3.5" /></button>} />
                             <DropdownMenuContent align="start" className="w-44">
                               <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => setPendingDelete(conversation)}><Trash2Icon /> Delete conversation</DropdownMenuItem>
                             </DropdownMenuContent>
