@@ -229,7 +229,7 @@ export default function WorkspacePage() {
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
         onDrop={(event) => { event.preventDefault(); setDragging(false); void handleFiles(Array.from(event.dataTransfer.files)); }}
       >
-        <header className="flex h-20 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-8">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4 sm:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <Sheet open={isFilesOpen} onOpenChange={setIsFilesOpen}>
               <SheetTrigger render={<Button variant="ghost" size="icon" className="size-9 md:hidden" aria-label="Open files"><PanelLeftIcon className="size-4" /></Button>} />
@@ -239,12 +239,9 @@ export default function WorkspacePage() {
                 {sidebar}
               </SheetContent>
             </Sheet>
-            <div>
-              <h1 className="text-[14px] font-medium">Chat</h1>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">A little space to understand more.</p>
-            </div>
+            <h1 className="text-[13px] font-medium">Chat</h1>
           </div>
-          <Button variant="ghost" disabled={isBusy || messages.length === 0} onClick={() => { setMessages([]); sourcesRef.current.clear(); setChatVersion((value) => value + 1); }} className="h-9 gap-2 px-3 text-[12px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
+          <Button variant="ghost" disabled={isBusy || messages.length === 0} onClick={() => { setMessages([]); sourcesRef.current.clear(); setChatVersion((value) => value + 1); }} className="h-8 gap-2 px-2 text-[11px] font-normal text-muted-foreground"><PlusIcon className="size-3.5" /> New chat</Button>
         </header>
 
         {messages.length > 0 ? (
