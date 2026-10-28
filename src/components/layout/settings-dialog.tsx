@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { MODELS, listModels, verifyApiKey, type GroqModel } from "@/lib/groq/client";
 import { useSettings } from "../library/settings-provider";
@@ -61,7 +62,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogTitle className="text-xl font-medium tracking-tight">Make yourself at home.</DialogTitle>
           <DialogDescription className="text-[13px] leading-6">Connect Groq to ask questions about your files.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-5 px-2 py-3">
+        <div className="min-w-0 space-y-5 px-2 py-3">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="groq-key" className="text-xs">API key</Label>
@@ -72,9 +73,42 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           </div>
           <div className="space-y-2">
             <Label htmlFor="groq-model" className="text-xs">Answer model</Label>
-            <select id="groq-model" value={draftModel} disabled={state.kind === "checking"} onChange={(event) => { setDraftModel(event.target.value); setState({ kind: "idle" }); }} className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-[13px]">
-              {availableModels.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.note}</option>)}
-            </select>
+            <Select
+              items={availableModels.map((entry) => ({ value: entry.id, label: entry.name }))}
+              value={draftModel}
+              disabled={state.kind === "checking"}
+              onValueChange={(value) => {
+                if (value === null) return;
+                setDraftModel(value);
+                setState({ kind: "idle" });
+              }}
+            >
+              <SelectTrigger
+                id="groq-model"
+                className="w-full min-w-0 bg-background px-3 text-[13px] data-[size=default]:h-10 focus-visible:border-primary/50 focus-visible:ring-primary/15 dark:bg-background dark:hover:bg-muted/40"
+              >
+                <SelectValue className="min-w-0">
+                  <span className="truncate">{availableModels.find((entry) => entry.id === draftModel)?.name}</span>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                align="start"
+                alignItemWithTrigger={false}
+                sideOffset={6}
+                className="max-h-[min(18rem,var(--available-height))] max-w-[calc(100vw-2rem)] rounded-xl border border-border p-1 shadow-lg ring-0"
+              >
+                {availableModels.map((entry) => (
+                  <SelectItem
+                    key={entry.id}
+                    value={entry.id}
+                    className="min-h-10 rounded-lg py-2 pr-9 pl-3 text-[13px] data-highlighted:bg-accent data-highlighted:text-foreground data-selected:text-primary"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">{entry.note}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <p className="rounded-lg bg-muted/65 p-3 text-[11px] leading-5 text-muted-foreground">Your PDFs are processed in your browser. When you chat, relevant document text and your conversation are sent to Groq to generate an answer.</p>
           {state.kind === "bad" && <p role="alert" className="text-xs leading-5 text-destructive">{state.message}</p>}
