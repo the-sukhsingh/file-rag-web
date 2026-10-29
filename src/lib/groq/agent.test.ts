@@ -130,4 +130,18 @@ describe("agent command history", () => {
     expect(run).not.toHaveBeenCalled();
     expect(callbacks.onText).toHaveBeenCalled();
   });
+
+  it("does not dump source passages into the user prompt and requires a shell tool call on turn 1", async () => {
+    await runAgent(request, callbacks);
+
+    const firstCallArgs = vi.mocked(streamWithTools).mock.calls[0];
+    const messages = firstCallArgs[0];
+    const options = firstCallArgs[1];
+
+    const userMessage = messages.find((m) => m.role === "user");
+    expect(userMessage?.content).toBe(request.question);
+    expect(userMessage?.content).not.toContain("<source");
+
+    expect(options.toolChoice).toBe("required");
+  });
 });

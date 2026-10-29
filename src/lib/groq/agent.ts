@@ -66,32 +66,30 @@ const ASSESS_SYSTEM = [
 ].join(" ");
 
 const ANSWER_SYSTEM = [
-  "You answer questions about a folder of documents using only the retrieved",
-  "passages and the files you read with the shell.",
+  "You are Quarry, an autonomous research agent.",
+  "You answer questions about documents mounted in the workspace at /workspace.",
   "",
-  "Rules:",
-  "- Use only what the passages and files say. Never invent facts, numbers or",
-  "  names.",
-  "- Cite every passage you used with its bracketed number, like [1] or [2].",
-  "  The numbers are the ones in front of the passages you were given - the",
-  "  passages are labelled 1, 2, 3 and so on.",
-  "- Never cite a line number from a command's output. A citation is always a",
-  "  passage number, never something like [1:4].",
-  "- If the passages do not answer the question, say so directly and suggest",
-  "  what to ask instead.",
-  "- If no passage matched at all, say that the folder does not seem to cover",
-  "  the question, and name what it does cover.",
+  "CRITICAL RULES:",
+  "- The text contents of the documents are NOT provided in your prompt.",
+  "- To gain knowledge about the current context, you MUST ALWAYS use shell commands (using the `shell` tool) before answering.",
+  "- Use commands such as `grep -rni \"term\" /workspace`, `find /workspace -type f`, and `cat /workspace/<path>.md` to explore and read passages.",
+  "- Always inspect the workspace files with the shell first. Never answer without reading the relevant passages through the shell.",
+  "- Base your response strictly and exclusively on the text returned by your shell commands. Never guess or hallucinate facts.",
+  "- Cite every passage you used with its bracketed number, like [1] or [2], based on the passage numbers in the files.",
+  "- Never cite a line number from a command's output like [1:4].",
+  "- If the files do not contain the answer, say so directly.",
   "- Answer in the language of the question.",
   "- Be concise and specific. Quote the phrases that matter.",
-].join(" ");
+].join("\n");
 
 /** The tool the agent uses to reach the passages as files. */
 const SHELL_TOOL: GroqTool = {
   name: "shell",
   description: [
-    "Run a shell command over the passages of this folder, which are mounted",
-    "as markdown files. Use grep to find an exact term across every passage,",
-    "ls to list the documents and chapters, and cat to read a passage.",
+    "Run a bash shell command to inspect the workspace files at /workspace.",
+    "Available commands: grep, rg, find, ls, cat, head, tail, wc, tree, sort, etc.",
+    "Example: grep -rni \"probability\" /workspace, or cat /workspace/Document/Section/001.md.",
+    "ALWAYS use this tool to discover and read the files needed to answer the user's question.",
     "The working directory is /workspace.",
   ].join(" "),
   parameters: {
@@ -100,7 +98,7 @@ const SHELL_TOOL: GroqTool = {
       command: {
         type: "string",
         description:
-          "The command line to run, for example: grep -rn \"probability\" /workspace",
+          "The command line to run, for example: grep -rni \"probability\" /workspace or cat /workspace/Notes/001.md",
       },
     },
     required: ["command"],
@@ -315,10 +313,11 @@ export async function runAgent(
     request.documentNames ?? new Map()
   );
 
-  const { text: finalText, citations, passages } = await answerWithShell({
+  const { text: finalText, citations, consultedChunkIds, passages } = await answerWithShell({
     question: request.question,
     folderName: request.folderName,
     accumulated,
+    candidates,
     shell,
     history: request.history,
     options,
@@ -329,9 +328,17 @@ export async function runAgent(
 
   /* ---- Only the passages the answer used ---------------------------- */
 
-  const usedIds = new Set(extractCitedChunks(finalText, accumulated));
+  const candidateEntries = candidates.map((c) => ({
+    chunk: c,
+    score: 1,
+    reason: "hybrid" as const,
+  }));
+  const citedIds = extractCitedChunks(finalText, candidateEntries);
+  const finalChunkIds =
+    citedIds.length > 0 ? citedIds : Array.from(consultedChunkIds);
+
   const usedCitations = citations.filter((citation) =>
-    usedIds.has(citation.chunkId)
+    finalChunkIds.includes(citation.chunkId)
   );
 
   callbacks.onCitations(usedCitations.map((citation) => citation.chunkId));
@@ -345,8 +352,9 @@ export async function runAgent(
  */
 async function answerWithShell({
   question,
-  folderName,
+  folderName: _folderName,
   accumulated,
+  candidates,
   shell,
   history,
   options,
@@ -357,6 +365,7 @@ async function answerWithShell({
   question: string;
   folderName: string;
   accumulated: RetrievedChunk[];
+  candidates: Chunk[];
   shell: WorkspaceShell;
   history?: { role: "user" | "assistant"; content: string }[];
   options: GroqOptions;
@@ -366,9 +375,15 @@ async function answerWithShell({
 }): Promise<{
   text: string;
   citations: { chunkId: string; label: string }[];
+  consultedChunkIds: Set<string>;
   passages: RetrievedChunk[];
 }> {
-  const { text: context, citations } = buildContext(accumulated, folderName);
+  const citations = candidates.map((chunk, index) => ({
+    chunkId: chunk.id,
+    label: `[${index + 1}] ${chunk.section} - ${
+      chunk.startPage ? `p.${chunk.startPage}` : "chunk"
+    }`,
+  }));
 
   const systemInstructions = [ANSWER_SYSTEM];
   if (commandDirective) {
@@ -376,10 +391,19 @@ async function answerWithShell({
       "",
       "Command Directive:",
       commandDirective,
-      "Adhere strictly to this command directive while retaining factual grounding and citations."
+      "Adhere strictly to this command directive while retaining factual grounding in your shell outputs."
     );
   }
   systemInstructions.push("", SHELL_INSTRUCTIONS);
+
+  if (shell.files.length > 0) {
+    const fileList = shell.files.slice(0, 30).join("\n");
+    systemInstructions.push(
+      "",
+      "Mounted workspace files under /workspace:",
+      fileList + (shell.files.length > 30 ? `\n... and ${shell.files.length - 30} more files` : "")
+    );
+  }
 
   const messages: GroqMessage[] = [
     {
@@ -392,28 +416,28 @@ async function answerWithShell({
     })),
     {
       role: "user",
-      content: `${context}\n\nQuestion: ${question}`,
+      content: question,
     },
   ];
 
-  // The model may ask for a command before it writes. Each command is run
-  // and its output handed back, until the model answers.
+  // The model must use shell commands to get knowledge about the current context.
   let commandsRun = 0;
   let toolCalls: GroqMessage["toolCalls"];
+  const consultedChunkIds = new Set<string>();
 
   while (commandsRun < MAX_SHELL_COMMANDS) {
-    // The text is streamed, so the reader watches the answer being written
-    // rather than waiting for the whole thing. A tool call comes back whole,
-    // because it has to run before the answer can continue.
+    // Force the shell tool on the first turn so the agent always inspects the context.
+    const toolChoice = commandsRun === 0 ? "required" : "auto";
+
     const reply = await streamWithTools(
       messages,
-      { ...options, tools: [SHELL_TOOL] },
+      { ...options, tools: [SHELL_TOOL], toolChoice },
       onText
     );
 
     if (!reply.toolCalls.length) {
       // The model has written its answer.
-      return { text: reply.content, citations, passages: accumulated };
+      return { text: reply.content, citations, consultedChunkIds, passages: accumulated };
     }
 
     toolCalls = reply.toolCalls;
@@ -439,13 +463,16 @@ async function answerWithShell({
 
       try {
         const result = await shell.run(command);
+        const chunkIds = chunkIdsForOutput(result.stdout + " " + command, shell);
+        for (const id of chunkIds) consultedChunkIds.add(id);
+
         onTrace({
           ...commandStep,
           state: result.exitCode === 0 ? "done" : "failed",
-          detail: truncate((result.stderr || result.stdout).trim(), 160),
+          detail: truncate((result.stderr || result.stdout).trim() || "(no output)", 160),
           exitCode: result.exitCode,
           durationMs: Date.now() - started,
-          chunkIds: chunkIdsForOutput(result.stdout, shell),
+          chunkIds,
         });
         outputs.push({
           id: call.id,
@@ -465,8 +492,7 @@ async function answerWithShell({
     messages.push({ role: "assistant", content: "", toolResults: outputs });
   }
 
-  // The model kept asking for commands. It gets the last word now, with
-  // whatever the shell found.
+  // The model reached the max shell command limit. Stream the final answer.
   let answer = "";
   await stream(
     [
@@ -474,7 +500,7 @@ async function answerWithShell({
       {
         role: "user",
         content:
-          "Answer the question now, using the passages and the command output above. Cite the passages you used.",
+          "Answer the question now, using the knowledge gathered from your shell commands above. Cite the passages you used with [1], [2], etc.",
       },
     ],
     options,
@@ -484,7 +510,7 @@ async function answerWithShell({
     }
   );
 
-  return { text: answer, citations, passages: accumulated };
+  return { text: answer, citations, consultedChunkIds, passages: accumulated };
 }
 
 /**
