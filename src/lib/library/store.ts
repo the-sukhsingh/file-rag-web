@@ -2,7 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
 import { createId } from "./import";
 import { tokenize } from "@/lib/retrieval/tokenize";
-import type { Chunk, DocumentRecord, Folder } from "./types";
+import type { Chunk, DocumentRecord, FileGroup, Folder } from "./types";
 
 /**
  * Local persistence for the library.
@@ -14,11 +14,12 @@ import type { Chunk, DocumentRecord, Folder } from "./types";
  */
 
 const DB_NAME = "quarry-library";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const FOLDER_STORE = "folders";
 const DOCUMENT_STORE = "documents";
 const CHUNK_STORE = "chunks";
+const GROUP_STORE = "groups";
 
 interface LibrarySchema extends DBSchema {
   folders: {
@@ -35,6 +36,10 @@ interface LibrarySchema extends DBSchema {
     key: string;
     value: Chunk;
     indexes: { "by-document": string; "by-folder": string };
+  };
+  groups: {
+    key: string;
+    value: FileGroup;
   };
 }
 
@@ -56,6 +61,9 @@ function getDb(): Promise<IDBPDatabase<LibrarySchema>> {
           const store = db.createObjectStore(CHUNK_STORE, { keyPath: "id" });
           store.createIndex("by-document", "documentId");
           store.createIndex("by-folder", "folderId");
+        }
+        if (!db.objectStoreNames.contains(GROUP_STORE)) {
+          db.createObjectStore(GROUP_STORE, { keyPath: "id" });
         }
       },
       blocked() {
@@ -92,6 +100,68 @@ export async function putFolders(folders: Folder[]): Promise<void> {
 export async function deleteFolder(id: string): Promise<void> {
   const db = await getDb();
   await db.delete(FOLDER_STORE, id);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Groups                                                                    */
+/* -------------------------------------------------------------------------- */
+
+export async function listGroups(): Promise<FileGroup[]> {
+  const db = await getDb();
+  return db.getAll(GROUP_STORE);
+}
+
+export async function putGroup(group: FileGroup): Promise<void> {
+  const db = await getDb();
+  await db.put(GROUP_STORE, group);
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction([GROUP_STORE, DOCUMENT_STORE], "readwrite");
+  const groupStore = tx.objectStore(GROUP_STORE);
+  const docStore = tx.objectStore(DOCUMENT_STORE);
+
+  await groupStore.delete(id);
+  const docs = await docStore.getAll();
+  for (const doc of docs) {
+    if (doc.groupId === id) {
+      await docStore.put({ ...doc, groupId: null, updatedAt: Date.now() });
+    }
+  }
+  await tx.done;
+}
+
+export async function updateDocumentGroup(
+  documentId: string,
+  groupId: string | null
+): Promise<void> {
+  const db = await getDb();
+  const doc = await db.get(DOCUMENT_STORE, documentId);
+  if (!doc) return;
+  await db.put(DOCUMENT_STORE, {
+    ...doc,
+    groupId: groupId ?? null,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function updateDocumentsGroup(
+  documentIds: string[],
+  groupId: string | null
+): Promise<void> {
+  if (!documentIds.length) return;
+  const db = await getDb();
+  const tx = db.transaction(DOCUMENT_STORE, "readwrite");
+  const store = tx.objectStore(DOCUMENT_STORE);
+  const timestamp = Date.now();
+  for (const id of documentIds) {
+    const doc = await store.get(id);
+    if (doc) {
+      await store.put({ ...doc, groupId: groupId ?? null, updatedAt: timestamp });
+    }
+  }
+  await tx.done;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -381,6 +451,7 @@ export async function clearLibrary(): Promise<void> {
     db.clear(FOLDER_STORE),
     db.clear(DOCUMENT_STORE),
     db.clear(CHUNK_STORE),
+    db.clear(GROUP_STORE),
   ]);
 }
 

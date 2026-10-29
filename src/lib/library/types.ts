@@ -21,6 +21,15 @@ export interface Folder {
 
 export type FolderAccent = "indigo" | "terracotta" | "teal" | "green";
 
+/** A user-defined group (folder) for organizing documents in the sidebar. */
+export interface FileGroup {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  accent?: FolderAccent;
+}
+
 /** A document that was imported into a folder. */
 export interface DocumentRecord {
   id: string;
@@ -35,6 +44,8 @@ export interface DocumentRecord {
   usedOutline: boolean;
   createdAt: number;
   updatedAt: number;
+  /** ID of the group this document belongs to, or null if ungrouped. */
+  groupId?: string | null;
 }
 
 /**
