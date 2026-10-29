@@ -59,7 +59,10 @@ const getClientSnapshot = () => true;
 const getServerSnapshot = () => false;
 
 function greetingFor(hour: number) {
-  return hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.";
+  if (hour >= 5 && hour < 12) return "Good Morning";
+  if (hour >= 12 && hour < 17) return "Good Afternoon";
+  if (hour >= 17 && hour < 21) return "Good Evening";
+  return "Good Night";
 }
 
 export default function WorkspacePage() {
@@ -101,7 +104,7 @@ export default function WorkspacePage() {
   const locked = isBusy || isRemoving || !history.ready;
   const savedSources = new Map(history.activeConversation?.sources.map((entry) => [entry.chunk.id, entry]) ?? []);
   const activeView = sidebarView ?? savedSidebarView;
-  const greeting = mounted ? greetingFor(new Date().getHours()) : "Hello.";
+  const greeting = mounted ? greetingFor(new Date().getHours()) : "Hello";
   const idea = ideas[ideaIndex % ideas.length];
   const heroSubline = library.documents.length === 0
     ? "Add a PDF to start. Every answer stays tied to its source."
