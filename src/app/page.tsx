@@ -19,14 +19,15 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from 
 import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
+import { parsePrompt, resolveTargetDocuments } from "@/lib/chat/commands";
 import { getSingleGroupContext, selectOnlyGroup, toggleGroupSelection } from "@/lib/library/groups";
 import { listChunksByDocument } from "@/lib/library/store";
 import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
 
 const suggestions = [
-  { label: "Summarize", question: "Give me a clear, concise summary of the selected files, citing the sources.", icon: AlignLeftIcon },
-  { label: "Takeaways", question: "What are the most important takeaways from the selected files? Cite the sources.", icon: LightbulbIcon },
-  { label: "Compare", question: "Compare the selected files. Where do they agree and differ? Cite the sources.", icon: GitCompareArrowsIcon },
+  { label: "Summarize", question: "/summarize", icon: AlignLeftIcon },
+  { label: "Takeaways", question: "/takeaways", icon: LightbulbIcon },
+  { label: "Compare", question: "/compare", icon: GitCompareArrowsIcon },
 ];
 
 const ideas = [
@@ -199,11 +200,48 @@ export default function WorkspacePage() {
   };
 
   const handleAsk = async (question: string) => {
-    if (abortRef.current || !hasReadableFiles || isRemoving || !history.ready) return;
+    if (abortRef.current || isRemoving || !history.ready) return;
     if (!settings.hasKey) {
       setIsSettingsOpen(true);
       return;
     }
+
+    const parsed = parsePrompt(question, library.documents, library.groups);
+
+    // If command is /clear, reset to a new conversation
+    if (parsed.command?.command === "clear") {
+      openConversation(null);
+      return;
+    }
+
+    // Resolve target documents from @mentions
+    const { targetDocumentIds } = resolveTargetDocuments(
+      parsed.mentionedFileNames,
+      parsed.mentionedGroupNames,
+      library.documents,
+      library.groups
+    );
+
+    // If @mentions were specified, ensure those documents are selected into context
+    let effectiveDocs = selectedDocuments;
+    if (targetDocumentIds.length > 0) {
+      const targetedDocs = library.documents.filter((d) => targetDocumentIds.includes(d.id));
+      const combined = new Map<string, DocumentRecord>();
+      for (const d of selectedDocuments) combined.set(d.id, d);
+      for (const d of targetedDocs) combined.set(d.id, d);
+      effectiveDocs = Array.from(combined.values());
+
+      const nextExcluded = new Set(excludedIds);
+      for (const id of targetDocumentIds) nextExcluded.delete(id);
+      setSelection(nextExcluded);
+    }
+
+    const readableTargetDocs = effectiveDocs.filter((d) => d.chunkCount > 0);
+    if (!readableTargetDocs.length) {
+      setUploadError("Please select or mention a file with readable text to chat.");
+      return;
+    }
+
     const controller = new AbortController();
     abortRef.current = controller;
     const assistantId = createMessageId();
@@ -213,7 +251,7 @@ export default function WorkspacePage() {
     if (history.activeConversation) {
       history.updateConversation(conversationId, (conversation) => ({ ...conversation, messages: [...conversation.messages, userMessage, assistantMessage], isStreaming: true }));
     } else {
-      history.createConversation({ id: conversationId, title: question.trim().slice(0, 100), messages: [userMessage, assistantMessage], documentIds: selectedDocuments.map((document) => document.id), sources: [], isStreaming: true, createdAt: now(), updatedAt: now() });
+      history.createConversation({ id: conversationId, title: question.trim().slice(0, 100), messages: [userMessage, assistantMessage], documentIds: effectiveDocs.map((document) => document.id), sources: [], isStreaming: true, createdAt: now(), updatedAt: now() });
     }
     setIsBusy(true);
 
@@ -229,24 +267,27 @@ export default function WorkspacePage() {
     };
 
     try {
-      const groups = await Promise.all(selectedDocuments.map((document) => listChunksByDocument(document.id)));
+      const groups = await Promise.all(effectiveDocs.map((document) => listChunksByDocument(document.id)));
       if (controller.signal.aborted) return;
       const chunks = groups.flat();
       if (!chunks.length) throw new Error("These files have no readable text. Please add a text-based PDF.");
-      const documentNames = new Map(selectedDocuments.map((document) => [document.id, document.fileName]));
+      const documentNames = new Map(effectiveDocs.map((document) => [document.id, document.fileName]));
       for (const { id, documentId, section, index, startPage, endPage, text } of chunks) {
         sourcesRef.current.set(id, { chunk: { id, documentId, section, index, startPage, endPage, text }, name: documentNames.get(documentId) ?? "Source" });
       }
       await runAgent(
         {
-          question,
-          folderName: "selected files",
+          question: parsed.cleanedText || question,
+          folderName: targetDocumentIds.length > 0 ? "targeted files" : "selected files",
           chunks,
           documentNames,
           history: messages.filter((message) => message.content).map(({ role, content }) => ({ role, content })),
           apiKey: settings.apiKey,
           model: settings.model,
           signal: controller.signal,
+          commandName: parsed.command?.command,
+          commandDirective: parsed.command?.promptDirective,
+          targetDocumentIds: targetDocumentIds.length > 0 ? targetDocumentIds : undefined,
         },
         {
           onTrace: (step) => patch((message) => {
@@ -431,12 +472,23 @@ export default function WorkspacePage() {
       onSubmit={(text) => void handleAsk(text)}
       onStop={handleStop}
       isBusy={isBusy}
-      disabled={!history.ready || !library.ready || !hasReadableFiles || !settings.hasKey || isRemoving}
+      disabled={!history.ready || !library.ready || !settings.hasKey || isRemoving}
       placeholder={composerPlaceholder}
       className={hero ? "w-full" : undefined}
       showHint={!hero}
       onAttach={() => inputRef.current?.click()}
       attachDisabled={locked || !!upload}
+      availableDocuments={library.documents}
+      availableGroups={library.groups}
+      onMentionSelect={(target) => {
+        if (target.type === "file") {
+          const next = new Set(excludedIds);
+          next.delete(target.id);
+          setSelection(next);
+        } else {
+          toggleGroup(target.id);
+        }
+      }}
     >
       <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
       <span className="truncate" title={selectedDocuments.map((document) => document.fileName).join("\n")}>

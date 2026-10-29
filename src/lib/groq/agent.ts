@@ -123,6 +123,12 @@ export interface AgentRequest {
   apiKey: string;
   model: string;
   signal?: AbortSignal;
+  /** Name of the slash command being executed (e.g. "summarize") */
+  commandName?: string;
+  /** Custom directive instructing the agent on how to structure its output */
+  commandDirective?: string;
+  /** Explicit document IDs targeted via @mentions */
+  targetDocumentIds?: string[];
 }
 
 export interface AgentCallbacks {
@@ -200,9 +206,21 @@ export async function runAgent(
   };
 
   const excluded = new Set(request.excludedChunkIds ?? []);
-  const candidates = request.chunks.filter(
+  let candidateChunks = request.chunks.filter(
     (chunk) => !excluded.has(chunk.id)
   );
+
+  // If specific documents were targeted via @mentions, prioritize their chunks
+  if (request.targetDocumentIds && request.targetDocumentIds.length > 0) {
+    const targeted = candidateChunks.filter((chunk) =>
+      request.targetDocumentIds!.includes(chunk.documentId)
+    );
+    if (targeted.length > 0) {
+      candidateChunks = targeted;
+    }
+  }
+
+  const candidates = candidateChunks;
 
   if (!candidates.length) {
     callbacks.onText(
@@ -217,7 +235,13 @@ export async function runAgent(
 
   /* ---- Round 1: the question as asked ------------------------------- */
 
-  const planStep = createStep("plan", "Reading the question");
+  const planTitle = request.commandName
+    ? `Executing /${request.commandName}`
+    : request.targetDocumentIds && request.targetDocumentIds.length > 0
+      ? `Focusing on ${request.targetDocumentIds.length === 1 ? "targeted file" : "targeted files"}`
+      : "Reading the question";
+
+  const planStep = createStep("plan", planTitle);
   callbacks.onTrace(planStep);
   planStep.state = "done";
   callbacks.onTrace(planStep);
@@ -298,6 +322,7 @@ export async function runAgent(
     shell,
     history: request.history,
     options,
+    commandDirective: request.commandDirective,
     onTrace: callbacks.onTrace,
     onText: callbacks.onText,
   });
@@ -325,6 +350,7 @@ async function answerWithShell({
   shell,
   history,
   options,
+  commandDirective,
   onTrace,
   onText,
 }: {
@@ -334,6 +360,7 @@ async function answerWithShell({
   shell: WorkspaceShell;
   history?: { role: "user" | "assistant"; content: string }[];
   options: GroqOptions;
+  commandDirective?: string;
   onTrace: AgentCallbacks["onTrace"];
   onText: (delta: string) => void;
 }): Promise<{
@@ -343,10 +370,21 @@ async function answerWithShell({
 }> {
   const { text: context, citations } = buildContext(accumulated, folderName);
 
+  const systemInstructions = [ANSWER_SYSTEM];
+  if (commandDirective) {
+    systemInstructions.push(
+      "",
+      "Command Directive:",
+      commandDirective,
+      "Adhere strictly to this command directive while retaining factual grounding and citations."
+    );
+  }
+  systemInstructions.push("", SHELL_INSTRUCTIONS);
+
   const messages: GroqMessage[] = [
     {
       role: "system",
-      content: [ANSWER_SYSTEM, "", SHELL_INSTRUCTIONS].join("\n"),
+      content: systemInstructions.join("\n"),
     },
     ...(history ?? []).map((entry) => ({
       role: entry.role,
