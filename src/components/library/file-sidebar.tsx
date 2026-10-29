@@ -98,6 +98,7 @@ export function FileSidebar({
   const [collapsedGroupIds, setCollapsedGroupIds] = React.useState<Set<string>>(new Set());
   const [groupPendingDelete, setGroupPendingDelete] = React.useState<FileGroup | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = React.useState(false);
+  const [openMenuId, setOpenMenuId] = React.useState<string | null>(null);
 
   const newGroupInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -250,63 +251,81 @@ export function FileSidebar({
         </button>
 
         {/* More actions menu (subtle, visible on hover) */}
-        <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`Manage ${document.fileName}`}
-                  className="flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground"
-                >
-                  <MoreHorizontalIcon className="size-3" />
-                </button>
-              }
-            />
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={() => onPreview(document)}>
-                <FileTextIcon /> View extracted text
-              </DropdownMenuItem>
-              {groups.length > 0 && onMoveDocumentToGroup && (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <FolderIcon /> Move to group
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-44">
-                    {groups.map((group) => {
-                      const isCurrent = document.groupId === group.id;
-                      return (
-                        <DropdownMenuItem
-                          key={group.id}
-                          disabled={isCurrent}
-                          onClick={() => void onMoveDocumentToGroup(document.id, group.id)}
-                        >
-                          <span className="truncate">{group.name}</span>
-                          {isCurrent && <CheckIcon className="ml-auto size-3.5" />}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      disabled={!document.groupId}
-                      onClick={() => void onMoveDocumentToGroup(document.id, null)}
-                    >
-                      <span>Ungrouped</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
+        {(() => {
+          const isMenuOpen = openMenuId === `doc:${document.id}`;
+          return (
+            <div
+              className={cn(
+                "shrink-0 transition-opacity",
+                isMenuOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100"
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={disabled}
-                onClick={() => onRemove(document)}
+            >
+              <DropdownMenu
+                open={isMenuOpen}
+                onOpenChange={(open) => setOpenMenuId(open ? `doc:${document.id}` : null)}
               >
-                <Trash2Icon /> Remove file
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Manage ${document.fileName}`}
+                      className={cn(
+                        "flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground",
+                        isMenuOpen && "bg-background text-foreground"
+                      )}
+                    >
+                      <MoreHorizontalIcon className="size-3" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-48">
+                  <DropdownMenuItem onClick={() => onPreview(document)}>
+                    <FileTextIcon /> View extracted text
+                  </DropdownMenuItem>
+                  {groups.length > 0 && onMoveDocumentToGroup && (
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <FolderIcon /> Move to group
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-44">
+                        {groups.map((group) => {
+                          const isCurrent = document.groupId === group.id;
+                          return (
+                            <DropdownMenuItem
+                              key={group.id}
+                              disabled={isCurrent}
+                              onClick={() => void onMoveDocumentToGroup(document.id, group.id)}
+                            >
+                              <span className="truncate">{group.name}</span>
+                              {isCurrent && <CheckIcon className="ml-auto size-3.5" />}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          disabled={!document.groupId}
+                          onClick={() => void onMoveDocumentToGroup(document.id, null)}
+                        >
+                          <span>Ungrouped</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={disabled}
+                    onClick={() => onRemove(document)}
+                  >
+                    <Trash2Icon /> Remove file
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        })()}
       </li>
     );
   };
@@ -420,64 +439,87 @@ export function FileSidebar({
           </div>
 
           {/* Count (default) / Action menu (on hover) */}
-          <div className="flex shrink-0 items-center justify-end pr-0.5">
-            <span className="text-[11px] text-muted-foreground/50 tabular-nums transition-opacity group-hover/group-row:hidden">
-              {totalDocsInGroup.length}
-            </span>
-
-            <div className="hidden group-hover/group-row:flex group-focus-within/group-row:flex">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`Manage group ${group.name}`}
-                      className="flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground"
-                    >
-                      <MoreHorizontalIcon className="size-3" />
-                    </button>
-                  }
-                />
-                <DropdownMenuContent align="start" className="w-48">
-                  {groupDocs.length > 0 && onToggleGroup && (
-                    <>
-                      <DropdownMenuItem onClick={() => onToggleGroup(group.id)}>
-                        <CheckIcon /> {allSelected ? "Deselect group files" : "Select all in group"}
-                      </DropdownMenuItem>
-                      {onSelectGroupOnly && (
-                        <DropdownMenuItem onClick={() => onSelectGroupOnly(group.id)}>
-                          <span>Select only this group</span>
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                    </>
+          {(() => {
+            const isMenuOpen = openMenuId === `group:${group.id}`;
+            return (
+              <div className="flex shrink-0 items-center justify-end pr-0.5">
+                <span
+                  className={cn(
+                    "text-[11px] text-muted-foreground/50 tabular-nums transition-opacity",
+                    isMenuOpen ? "hidden" : "group-hover/group-row:hidden"
                   )}
-                  <DropdownMenuItem
-                    onClick={() => {
-                      onPickFiles(group.id);
-                    }}
+                >
+                  {totalDocsInGroup.length}
+                </span>
+
+                <div
+                  className={cn(
+                    "items-center",
+                    isMenuOpen
+                      ? "flex"
+                      : "hidden group-hover/group-row:flex group-focus-within/group-row:flex"
+                  )}
+                >
+                  <DropdownMenu
+                    open={isMenuOpen}
+                    onOpenChange={(open) => setOpenMenuId(open ? `group:${group.id}` : null)}
                   >
-                    <PlusIcon /> Add files to group
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setRenamingGroupId(group.id);
-                      setRenamingName(group.name);
-                    }}
-                  >
-                    <PencilIcon /> Rename group
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setGroupPendingDelete(group)}
-                  >
-                    <Trash2Icon /> Delete group
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
+                    <DropdownMenuTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label={`Manage group ${group.name}`}
+                          className={cn(
+                            "flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground",
+                            isMenuOpen && "bg-background text-foreground"
+                          )}
+                        >
+                          <MoreHorizontalIcon className="size-3" />
+                        </button>
+                      }
+                    />
+                    <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-48">
+                      {groupDocs.length > 0 && onToggleGroup && (
+                        <>
+                          <DropdownMenuItem onClick={() => onToggleGroup(group.id)}>
+                            <CheckIcon /> {allSelected ? "Deselect group files" : "Select all in group"}
+                          </DropdownMenuItem>
+                          {onSelectGroupOnly && (
+                            <DropdownMenuItem onClick={() => onSelectGroupOnly(group.id)}>
+                              <span>Select only this group</span>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      <DropdownMenuItem
+                        onClick={() => {
+                          onPickFiles(group.id);
+                        }}
+                      >
+                        <PlusIcon /> Add files to group
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setRenamingGroupId(group.id);
+                          setRenamingName(group.name);
+                        }}
+                      >
+                        <PencilIcon /> Rename group
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setGroupPendingDelete(group)}
+                      >
+                        <Trash2Icon /> Delete group
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {!collapsed && (

@@ -58,6 +58,7 @@ export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready
   const [query, setQuery] = React.useState("");
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<Conversation | null>(null);
+  const [openMenuId, setOpenMenuId] = React.useState<string | null>(null);
   const [now, setNow] = React.useState(0);
   React.useEffect(() => {
     const update = () => setNow(Date.now());
@@ -143,12 +144,37 @@ export function ChatHistory({ conversations, activeId, onSelect, onDelete, ready
                               {relativeTime(conversation.updatedAt, reference)}
                             </time>
                           </button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger render={<button type="button" aria-label={`Manage conversation: ${conversation.title}`} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-background hover:text-foreground max-md:opacity-100"><MoreHorizontalIcon className="size-3.5" /></button>} />
-                            <DropdownMenuContent align="start" className="w-44">
-                              <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => setPendingDelete(conversation)}><Trash2Icon /> Delete conversation</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {(() => {
+                            const isMenuOpen = openMenuId === conversation.id;
+                            return (
+                              <DropdownMenu
+                                open={isMenuOpen}
+                                onOpenChange={(open) => setOpenMenuId(open ? conversation.id : null)}
+                              >
+                                <DropdownMenuTrigger
+                                  render={
+                                    <button
+                                      type="button"
+                                      aria-label={`Manage conversation: ${conversation.title}`}
+                                      className={cn(
+                                        "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-background hover:text-foreground max-md:opacity-100",
+                                        isMenuOpen
+                                          ? "opacity-100 bg-background text-foreground"
+                                          : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                                      )}
+                                    >
+                                      <MoreHorizontalIcon className="size-3.5" />
+                                    </button>
+                                  }
+                                />
+                                <DropdownMenuContent align="end" side="bottom" sideOffset={4} className="w-44">
+                                  <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => setPendingDelete(conversation)}>
+                                    <Trash2Icon /> Delete conversation
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            );
+                          })()}
                         </div>
                       </li>
                     );
