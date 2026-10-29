@@ -47,7 +47,8 @@ export interface ImportResult {
 export async function importPdfIntoFolder(
   file: File,
   parentId: string | null,
-  onProgress?: (message: string, percent: number) => void
+  onProgress?: (message: string, percent: number) => void,
+  groupId?: string | null
 ): Promise<ImportResult> {
   const existing = await listFolders();
   const parent = parentId
@@ -117,6 +118,7 @@ export async function importPdfIntoFolder(
     usedOutline: extracted.usedOutline,
     createdAt: now,
     updatedAt: now,
+    groupId: groupId ?? null,
   };
 
   await putFolders(folders);

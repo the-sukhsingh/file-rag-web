@@ -13,17 +13,22 @@ import {
   createChunk,
   deleteChunk,
   deleteFolderTree,
+  deleteGroup,
   listChunksByFolder,
   listDocuments,
   listFolders,
+  listGroups,
   moveChunk,
   moveDocument,
   moveFolder,
   putFolder,
+  putGroup,
   updateChunkEmbedding,
   updateChunkText,
+  updateDocumentGroup,
+  updateDocumentsGroup,
 } from "@/lib/library/store";
-import type { Chunk, DocumentRecord, Folder } from "@/lib/library/types";
+import type { Chunk, DocumentRecord, FileGroup, Folder, FolderAccent } from "@/lib/library/types";
 import { embedTexts } from "@/lib/retrieval/embeddings";
 import { indexChunks } from "@/lib/retrieval/index";
 
@@ -56,6 +61,7 @@ export interface FolderSummary {
 interface LibraryContextValue {
   folders: Folder[];
   documents: DocumentRecord[];
+  groups: FileGroup[];
   ready: boolean;
   /** A summary of every folder, with the counts the tree needs. */
   summaries: Map<string, FolderSummary>;
@@ -63,10 +69,16 @@ interface LibraryContextValue {
   renameFolder: (folderId: string, name: string) => Promise<void>;
   removeFolder: (folderId: string) => Promise<void>;
   moveFolderTo: (folderId: string, parentId: string | null) => Promise<void>;
+  createGroup: (name: string, accent?: FolderAccent) => Promise<FileGroup>;
+  renameGroup: (groupId: string, name: string) => Promise<void>;
+  removeGroup: (groupId: string) => Promise<void>;
+  setDocumentGroup: (documentId: string, groupId: string | null) => Promise<void>;
+  setDocumentsGroup: (documentIds: string[], groupId: string | null) => Promise<void>;
   importPdf: (
     file: File,
     parentId: string | null,
-    onProgress?: (message: string, percent: number) => void
+    onProgress?: (message: string, percent: number) => void,
+    groupId?: string | null
   ) => Promise<ImportResult>;
   removeDocument: (documentId: string) => Promise<void>;
   moveDocumentTo: (documentId: string, folderId: string) => Promise<void>;
@@ -126,6 +138,7 @@ export function useLibrary(): LibraryContextValue {
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const [folders, setFolders] = React.useState<Folder[]>([]);
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
+  const [groups, setGroups] = React.useState<FileGroup[]>([]);
   const [ready, setReady] = React.useState(false);
   const [indexing, setIndexing] = React.useState<{
     done: number;
@@ -135,12 +148,14 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
   const chunkCache = React.useRef(new Map<string, Chunk[]>());
 
   const refresh = React.useCallback(async () => {
-    const [nextFolders, nextDocuments] = await Promise.all([
+    const [nextFolders, nextDocuments, nextGroups] = await Promise.all([
       listFolders(),
       listDocuments(),
+      listGroups(),
     ]);
     setFolders(nextFolders);
     setDocuments(nextDocuments);
+    setGroups(nextGroups);
   }, []);
 
   React.useEffect(() => {
@@ -226,13 +241,73 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     [refresh]
   );
 
+  const createGroup = React.useCallback(
+    async (name: string, accent?: FolderAccent) => {
+      const trimmed = name.trim();
+      if (!trimmed) throw new Error("A group needs a name.");
+      const now = Date.now();
+      const group: FileGroup = {
+        id: createId("group"),
+        name: trimmed,
+        accent,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await putGroup(group);
+      await refresh();
+      return group;
+    },
+    [refresh]
+  );
+
+  const renameGroup = React.useCallback(
+    async (groupId: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const group = groups.find((g) => g.id === groupId);
+      if (!group) return;
+      await putGroup({
+        ...group,
+        name: trimmed,
+        updatedAt: Date.now(),
+      });
+      await refresh();
+    },
+    [groups, refresh]
+  );
+
+  const removeGroup = React.useCallback(
+    async (groupId: string) => {
+      await deleteGroup(groupId);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const setDocumentGroup = React.useCallback(
+    async (documentId: string, groupId: string | null) => {
+      await updateDocumentGroup(documentId, groupId);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const setDocumentsGroup = React.useCallback(
+    async (documentIds: string[], groupId: string | null) => {
+      await updateDocumentsGroup(documentIds, groupId);
+      await refresh();
+    },
+    [refresh]
+  );
+
   const importPdf = React.useCallback(
     async (
       file: File,
       parentId: string | null,
-      onProgress?: (message: string, percent: number) => void
+      onProgress?: (message: string, percent: number) => void,
+      groupId?: string | null
     ) => {
-      const result = await importPdfIntoFolder(file, parentId, onProgress);
+      const result = await importPdfIntoFolder(file, parentId, onProgress, groupId);
       chunkCache.current.clear();
       await refresh();
 
@@ -415,12 +490,18 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     () => ({
       folders,
       documents,
+      groups,
       ready,
       summaries,
       createFolder,
       renameFolder,
       removeFolder,
       moveFolderTo,
+      createGroup,
+      renameGroup,
+      removeGroup,
+      setDocumentGroup,
+      setDocumentsGroup,
       importPdf,
       removeDocument: removeDocumentById,
       moveDocumentTo,
@@ -498,12 +579,18 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     [
       folders,
       documents,
+      groups,
       ready,
       summaries,
       createFolder,
       renameFolder,
       removeFolder,
       moveFolderTo,
+      createGroup,
+      renameGroup,
+      removeGroup,
+      setDocumentGroup,
+      setDocumentsGroup,
       importPdf,
       removeDocumentById,
       moveDocumentTo,
