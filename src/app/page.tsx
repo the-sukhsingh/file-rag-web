@@ -82,6 +82,7 @@ export default function WorkspacePage() {
   const [source, setSource] = React.useState<SourcePreview | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const [chatVersion, setChatVersion] = React.useState(0);
+  const [uploadGroupId, setUploadGroupId] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const uploadingRef = React.useRef(false);
@@ -128,6 +129,33 @@ export default function WorkspacePage() {
     else setDraftExcludedIds(next);
   };
 
+  const toggleGroup = (groupId: string | null) => {
+    const groupDocs = groupId
+      ? library.documents.filter((doc) => doc.groupId === groupId)
+      : library.documents.filter((doc) => !doc.groupId || !library.groups.some((g) => g.id === doc.groupId));
+    if (!groupDocs.length) return;
+    const allSelected = groupDocs.every((doc) => !excludedIds.has(doc.id));
+    const next = new Set(excludedIds);
+    if (allSelected) {
+      for (const doc of groupDocs) next.add(doc.id);
+    } else {
+      for (const doc of groupDocs) next.delete(doc.id);
+    }
+    setSelection(next);
+  };
+
+  const selectGroupOnly = (groupId: string | null) => {
+    const groupDocIds = new Set(
+      groupId
+        ? library.documents.filter((doc) => doc.groupId === groupId).map((d) => d.id)
+        : library.documents.filter((doc) => !doc.groupId || !library.groups.some((g) => g.id === doc.groupId)).map((d) => d.id)
+    );
+    const next = new Set(
+      library.documents.filter((doc) => !groupDocIds.has(doc.id)).map((doc) => doc.id)
+    );
+    setSelection(next);
+  };
+
   const openConversation = (id: string | null) => {
     if (locked || uploadingRef.current) return;
     history.selectConversation(id);
@@ -137,8 +165,9 @@ export default function WorkspacePage() {
     setChatVersion((value) => value + 1);
   };
 
-  const handleFiles = async (files: File[]) => {
+  const handleFiles = async (files: File[], targetGroupId?: string | null) => {
     if (uploadingRef.current || locked || !files.length) return;
+    const assignedGroupId = targetGroupId !== undefined ? targetGroupId : uploadGroupId;
     uploadingRef.current = true;
     changeSidebarView("files");
     if (window.matchMedia("(max-width: 767px)").matches) setIsMobileSidebarOpen(true);
@@ -159,7 +188,7 @@ export default function WorkspacePage() {
         try {
           const result = await library.importPdf(file, null, (_message, percent) => {
             setUpload({ name: file.name, percent: Math.min(percent, 95), position: index + 1, total: files.length });
-          });
+          }, assignedGroupId);
           if (history.activeConversation) history.updateConversation(history.activeConversation.id, (conversation) => ({ ...conversation, documentIds: [...conversation.documentIds, result.document.id] }));
           if (!result.chunks.length) {
             errors.push(`${file.name}: no readable text was found. Try a text-based PDF instead of a scanned image.`);
@@ -171,6 +200,7 @@ export default function WorkspacePage() {
     } finally {
       uploadingRef.current = false;
       setUpload(null);
+      setUploadGroupId(null);
       setUploadError(errors.length ? errors.join("\n") : null);
     }
   };
@@ -340,6 +370,7 @@ export default function WorkspacePage() {
         <div className={cn("min-h-0 flex-1 flex-col", activeView === "files" ? "flex" : "hidden")}>
           <FileSidebar
             documents={library.documents}
+            groups={library.groups}
             ready={library.ready}
             excludedIds={excludedIds}
             onToggle={(id) => {
@@ -347,11 +378,17 @@ export default function WorkspacePage() {
               if (next.has(id)) next.delete(id); else next.add(id);
               setSelection(next);
             }}
+            onToggleGroup={toggleGroup}
+            onSelectGroupOnly={selectGroupOnly}
             onSelectAll={() => setSelection(selectedDocuments.length === library.documents.length ? new Set(library.documents.map((document) => document.id)) : new Set())}
             onPreview={(document) => void handlePreview(document)}
             onRemove={(document) => { setIsMobileSidebarOpen(false); setRemovalError(null); setPendingRemoval(document); }}
-            onPickFiles={() => inputRef.current?.click()}
-            onFiles={(files) => void handleFiles(files)}
+            onPickFiles={(groupId) => { setUploadGroupId(groupId ?? null); inputRef.current?.click(); }}
+            onFiles={(files, groupId) => void handleFiles(files, groupId)}
+            onCreateGroup={async (name) => { await library.createGroup(name); }}
+            onRenameGroup={async (groupId, name) => { await library.renameGroup(groupId, name); }}
+            onDeleteGroup={async (groupId) => { await library.removeGroup(groupId); }}
+            onMoveDocumentToGroup={async (documentId, groupId) => { await library.setDocumentGroup(documentId, groupId); }}
             upload={upload}
             error={uploadError}
             onDismissError={() => setUploadError(null)}
@@ -391,6 +428,16 @@ export default function WorkspacePage() {
     </aside>
   );
 
+  const singleGroupContext = React.useMemo(() => {
+    if (!selectedDocuments.length || !library.groups.length) return null;
+    const firstGroupId = selectedDocuments[0]?.groupId;
+    if (!firstGroupId) return null;
+    const group = library.groups.find((g) => g.id === firstGroupId);
+    if (!group) return null;
+    const allInSameGroup = selectedDocuments.every((d) => d.groupId === firstGroupId);
+    return allInSameGroup ? group : null;
+  }, [selectedDocuments, library.groups]);
+
   const composer = (hero: boolean) => (
     <PromptBox
       key={chatVersion}
@@ -405,7 +452,11 @@ export default function WorkspacePage() {
       attachDisabled={locked || !!upload}
     >
       <FilesIcon className="mr-1.5 size-3.5 shrink-0" />
-      <span className="truncate" title={selectedDocuments.map((document) => document.fileName).join("\n")}>{selectedDocuments.length ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in context` : "No files selected"}</span>
+      <span className="truncate" title={selectedDocuments.map((document) => document.fileName).join("\n")}>
+        {selectedDocuments.length
+          ? `${selectedDocuments.length} ${selectedDocuments.length === 1 ? "file" : "files"} in context${singleGroupContext ? ` (${singleGroupContext.name})` : ""}`
+          : "No files selected"}
+      </span>
     </PromptBox>
   );
 
