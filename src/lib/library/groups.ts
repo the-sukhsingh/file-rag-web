@@ -83,3 +83,4 @@ export function getSingleGroupContext(
   const allMatch = selectedDocuments.every((doc) => doc.groupId === firstGroupId);
   return allMatch ? group : null;
 }
+

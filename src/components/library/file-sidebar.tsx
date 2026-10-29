@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   FileTextIcon,
   FolderIcon,
-  FolderOpenIcon,
   FolderPlusIcon,
   MinusIcon,
   MoreHorizontalIcon,
@@ -186,7 +185,6 @@ export function FileSidebar({
       }
     }
 
-    // Sort documents in each group by creation date descending
     for (const list of map.values()) {
       list.sort((a, b) => b.createdAt - a.createdAt);
     }
@@ -211,11 +209,12 @@ export function FileSidebar({
           event.dataTransfer.setData("application/x-document-id", document.id);
           event.dataTransfer.effectAllowed = "move";
         }}
-        className={cn(
-          "group relative flex items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-accent/50",
-          isNested && "ml-3 border-l border-border/40 pl-2 rounded-l-none"
-        )}
+        className="group relative flex h-7 items-center rounded-md px-1 transition-colors hover:bg-accent/50"
       >
+        {/* If nested inside a group, spacer matches the chevron width precisely */}
+        {isNested && <div className="size-5 shrink-0" aria-hidden="true" />}
+
+        {/* Checkbox */}
         <label className="relative flex size-5 shrink-0 cursor-pointer items-center justify-center">
           <input
             type="checkbox"
@@ -229,84 +228,85 @@ export function FileSidebar({
             <CheckIcon className="size-2.5" strokeWidth={2.5} />
           </span>
         </label>
+
+        {/* File button with title and compact page count */}
         <button
           type="button"
           onClick={() => onPreview(document)}
           title={document.fileName}
-          className="min-w-0 flex-1 rounded-sm py-0.5 text-left"
+          className="flex min-w-0 flex-1 items-baseline gap-1.5 rounded-sm px-1 py-0.5 text-left"
         >
           <span
             className={cn(
-              "block truncate text-[12px] leading-5 font-medium transition-colors",
+              "truncate text-[12px] font-normal transition-colors",
               selected ? "text-foreground" : "text-muted-foreground"
             )}
           >
             {document.fileName}
           </span>
-          <span className="flex items-center gap-1.5 text-[10px] leading-4 text-muted-foreground">
-            <span>
-              {document.pageCount} {document.pageCount === 1 ? "page" : "pages"}
-            </span>
-            {!document.chunkCount && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>No readable text</span>
-              </>
-            )}
+          <span className="shrink-0 text-[10px] text-muted-foreground/50 tabular-nums">
+            {document.pageCount}p
           </span>
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`Manage ${document.fileName}`}
-                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-background hover:text-foreground max-md:opacity-100"
+
+        {/* More actions menu (subtle, visible on hover) */}
+        <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 max-md:opacity-100">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Manage ${document.fileName}`}
+                  className="flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground"
+                >
+                  <MoreHorizontalIcon className="size-3" />
+                </button>
+              }
+            />
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem onClick={() => onPreview(document)}>
+                <FileTextIcon /> View extracted text
+              </DropdownMenuItem>
+              {groups.length > 0 && onMoveDocumentToGroup && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <FolderIcon /> Move to group
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-44">
+                    {groups.map((group) => {
+                      const isCurrent = document.groupId === group.id;
+                      return (
+                        <DropdownMenuItem
+                          key={group.id}
+                          disabled={isCurrent}
+                          onClick={() => void onMoveDocumentToGroup(document.id, group.id)}
+                        >
+                          <span className="truncate">{group.name}</span>
+                          {isCurrent && <CheckIcon className="ml-auto size-3.5" />}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={!document.groupId}
+                      onClick={() => void onMoveDocumentToGroup(document.id, null)}
+                    >
+                      <span>Ungrouped</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={disabled}
+                onClick={() => onRemove(document)}
               >
-                <MoreHorizontalIcon className="size-3.5" />
-              </button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem onClick={() => onPreview(document)}>
-              <FileTextIcon /> View extracted text
-            </DropdownMenuItem>
-            {groups.length > 0 && onMoveDocumentToGroup && (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <FolderIcon /> Move to group
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-44">
-                  {groups.map((group) => {
-                    const isCurrent = document.groupId === group.id;
-                    return (
-                      <DropdownMenuItem
-                        key={group.id}
-                        disabled={isCurrent}
-                        onClick={() => void onMoveDocumentToGroup(document.id, group.id)}
-                      >
-                        <FolderIcon className="text-primary/70" />
-                        <span className="truncate">{group.name}</span>
-                        {isCurrent && <CheckIcon className="ml-auto size-3.5" />}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    disabled={!document.groupId}
-                    onClick={() => void onMoveDocumentToGroup(document.id, null)}
-                  >
-                    <span>Remove from group</span>
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" disabled={disabled} onClick={() => onRemove(document)}>
-              <Trash2Icon /> Remove file
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Trash2Icon /> Remove file
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </li>
     );
   };
@@ -325,7 +325,7 @@ export function FileSidebar({
       <li
         key={group.id}
         className={cn(
-          "rounded-lg transition-colors",
+          "rounded-md transition-colors",
           isDragOver && "bg-primary/10 ring-1 ring-primary/30"
         )}
         onDragOver={(e) => {
@@ -350,18 +350,20 @@ export function FileSidebar({
           }
         }}
       >
-        <div className="group/group-row flex items-center gap-1.5 rounded-lg px-1 py-1 transition-colors hover:bg-accent/40">
+        <div className="group/group-row flex h-7 items-center rounded-md px-1 transition-colors hover:bg-accent/40">
+          {/* Chevron expander */}
           <button
             type="button"
             onClick={() => toggleGroupCollapse(group.id)}
             aria-label={collapsed ? `Expand ${group.name}` : `Collapse ${group.name}`}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
           >
             <ChevronRightIcon
               className={cn("size-3.5 transition-transform duration-150", !collapsed && "rotate-90")}
             />
           </button>
 
+          {/* Group selection checkbox */}
           <label
             className="relative flex size-5 shrink-0 cursor-pointer items-center justify-center"
             onClick={(e) => e.stopPropagation()}
@@ -392,16 +394,11 @@ export function FileSidebar({
             </span>
           </label>
 
+          {/* Group name */}
           <div
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-0.5 text-left"
+            className="flex min-w-0 flex-1 cursor-pointer items-center px-1 py-0.5 text-left"
             onClick={() => toggleGroupCollapse(group.id)}
           >
-            {collapsed ? (
-              <FolderIcon className="size-3.5 shrink-0 text-primary/80" />
-            ) : (
-              <FolderOpenIcon className="size-3.5 shrink-0 text-primary/80" />
-            )}
-
             {isRenaming ? (
               <input
                 autoFocus
@@ -416,79 +413,78 @@ export function FileSidebar({
                 className="h-5 min-w-0 flex-1 rounded bg-background px-1 text-[12px] font-medium text-foreground outline-none ring-1 ring-primary"
               />
             ) : (
-              <span className="truncate text-[12px] font-medium text-foreground">{group.name}</span>
+              <span className="truncate text-[12px] font-medium text-foreground tracking-tight">
+                {group.name}
+              </span>
             )}
-
-            <span className="text-[10px] text-muted-foreground/70 tabular-nums">
-              {totalDocsInGroup.length}
-            </span>
           </div>
 
-          <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/group-row:opacity-100 group-focus-within/group-row:opacity-100 focus-visible:opacity-100 max-md:opacity-100">
-            <button
-              type="button"
-              title="Add files to group"
-              aria-label={`Add files to ${group.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPickFiles(group.id);
-              }}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
-            >
-              <PlusIcon className="size-3" />
-            </button>
+          {/* Count (default) / Action menu (on hover) */}
+          <div className="flex shrink-0 items-center justify-end pr-0.5">
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums transition-opacity group-hover/group-row:hidden">
+              {totalDocsInGroup.length}
+            </span>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={`Manage group ${group.name}`}
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
-                  >
-                    <MoreHorizontalIcon className="size-3.5" />
-                  </button>
-                }
-              />
-              <DropdownMenuContent align="start" className="w-48">
-                {groupDocs.length > 0 && onToggleGroup && (
-                  <>
-                    <DropdownMenuItem onClick={() => onToggleGroup(group.id)}>
-                      <CheckIcon /> {allSelected ? "Deselect group files" : "Select all in group"}
-                    </DropdownMenuItem>
-                    {onSelectGroupOnly && (
-                      <DropdownMenuItem onClick={() => onSelectGroupOnly(group.id)}>
-                        <span>Select only this group</span>
+            <div className="hidden group-hover/group-row:flex group-focus-within/group-row:flex">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label={`Manage group ${group.name}`}
+                      className="flex size-5 items-center justify-center rounded text-muted-foreground/70 hover:bg-background hover:text-foreground"
+                    >
+                      <MoreHorizontalIcon className="size-3" />
+                    </button>
+                  }
+                />
+                <DropdownMenuContent align="start" className="w-48">
+                  {groupDocs.length > 0 && onToggleGroup && (
+                    <>
+                      <DropdownMenuItem onClick={() => onToggleGroup(group.id)}>
+                        <CheckIcon /> {allSelected ? "Deselect group files" : "Select all in group"}
                       </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem
-                  onClick={() => {
-                    setRenamingGroupId(group.id);
-                    setRenamingName(group.name);
-                  }}
-                >
-                  <PencilIcon /> Rename group
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setGroupPendingDelete(group)}
-                >
-                  <Trash2Icon /> Delete group
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      {onSelectGroupOnly && (
+                        <DropdownMenuItem onClick={() => onSelectGroupOnly(group.id)}>
+                          <span>Select only this group</span>
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      onPickFiles(group.id);
+                    }}
+                  >
+                    <PlusIcon /> Add files to group
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setRenamingGroupId(group.id);
+                      setRenamingName(group.name);
+                    }}
+                  >
+                    <PencilIcon /> Rename group
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => setGroupPendingDelete(group)}
+                  >
+                    <Trash2Icon /> Delete group
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
         {!collapsed && (
-          <ul className="mt-0.5 space-y-px">
+          <ul className="space-y-px py-0.5">
             {groupDocs.length === 0 ? (
-              <li className="py-1 pr-2 pl-7 text-[11px] text-muted-foreground/50 italic">
-                No files here yet
+              <li className="py-1 pr-2 pl-11 text-[11px] text-muted-foreground/45 italic">
+                Empty group
               </li>
             ) : (
               groupDocs.map((doc) => renderFileRow(doc, true))
@@ -502,7 +498,7 @@ export function FileSidebar({
   const renderUngroupedSection = () => {
     const ungroupedDocs = docsByGroup.ungrouped;
     if (groups.length === 0) {
-      // If no groups exist, render flat list
+      // If no groups exist, render a single clean flat list
       return (
         <ul className="space-y-px">
           {ungroupedDocs.map((doc) => renderFileRow(doc, false))}
@@ -521,7 +517,7 @@ export function FileSidebar({
     return (
       <li
         className={cn(
-          "rounded-lg transition-colors",
+          "rounded-md transition-colors",
           isDragOver && "bg-primary/10 ring-1 ring-primary/30"
         )}
         onDragOver={(e) => {
@@ -546,12 +542,12 @@ export function FileSidebar({
           }
         }}
       >
-        <div className="group/group-row flex items-center gap-1.5 rounded-lg px-1 py-1 transition-colors hover:bg-accent/40">
+        <div className="group/group-row flex h-7 items-center rounded-md px-1 transition-colors hover:bg-accent/40">
           <button
             type="button"
             onClick={() => toggleGroupCollapse("ungrouped")}
             aria-label={collapsed ? "Expand ungrouped files" : "Collapse ungrouped files"}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground"
           >
             <ChevronRightIcon
               className={cn("size-3.5 transition-transform duration-150", !collapsed && "rotate-90")}
@@ -589,38 +585,23 @@ export function FileSidebar({
           </label>
 
           <div
-            className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-0.5 text-left"
+            className="flex min-w-0 flex-1 cursor-pointer items-center px-1 py-0.5 text-left"
             onClick={() => toggleGroupCollapse("ungrouped")}
           >
-            {collapsed ? (
-              <FolderIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
-            ) : (
-              <FolderOpenIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
-            )}
-            <span className="truncate text-[12px] font-medium text-foreground">Ungrouped</span>
-            <span className="text-[10px] text-muted-foreground/70 tabular-nums">
-              {ungroupedDocs.length}
+            <span className="truncate text-[12px] font-medium text-foreground tracking-tight">
+              Ungrouped
             </span>
           </div>
 
-          <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/group-row:opacity-100 group-focus-within/group-row:opacity-100 focus-visible:opacity-100 max-md:opacity-100">
-            <button
-              type="button"
-              title="Add ungrouped files"
-              aria-label="Add ungrouped files"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPickFiles(null);
-              }}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
-            >
-              <PlusIcon className="size-3" />
-            </button>
+          <div className="flex shrink-0 items-center justify-end pr-0.5">
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums">
+              {ungroupedDocs.length}
+            </span>
           </div>
         </div>
 
         {!collapsed && (
-          <ul className="mt-0.5 space-y-px">
+          <ul className="space-y-px py-0.5">
             {ungroupedDocs.map((doc) => renderFileRow(doc, true))}
           </ul>
         )}
@@ -644,14 +625,15 @@ export function FileSidebar({
         if (ready && !upload && !disabled) onFiles(Array.from(event.dataTransfer.files));
       }}
     >
-      <div className="flex shrink-0 items-center gap-1 px-3 pb-1">
+      {/* Top minimal toolbar */}
+      <div className="flex shrink-0 items-center gap-1 px-3 pb-1.5">
         <button
           type="button"
           onClick={() => onPickFiles()}
           disabled={!ready || !!upload || disabled}
           title="PDF files, up to 50 MB each"
           className={cn(
-            "-ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            "-ml-1.5 flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
             draggingGlobal ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent/60"
           )}
         >
@@ -674,7 +656,7 @@ export function FileSidebar({
             }}
             disabled={!ready || !!upload || disabled}
             title="Create a folder group"
-            className="flex h-8 items-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-40"
+            className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:opacity-40"
           >
             <FolderPlusIcon className="size-3.5 text-primary" />
             <span>New group</span>
@@ -687,7 +669,7 @@ export function FileSidebar({
               type="button"
               disabled={disabled}
               onClick={onSelectAll}
-              className="rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+              className="rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
             >
               {selectedCount === documents.length ? "Deselect all" : "Select all"}
             </button>
@@ -723,9 +705,9 @@ export function FileSidebar({
       {isCreatingGroup && (
         <form
           onSubmit={(e) => void handleCreateGroupSubmit(e)}
-          className="mx-3 my-1 flex items-center gap-1 rounded-lg border border-primary/30 bg-card px-2 py-1 shadow-xs"
+          className="mx-3 my-1 flex h-7 items-center gap-1.5 rounded-md border border-border/80 bg-background px-2 shadow-xs focus-within:border-primary/50"
         >
-          <FolderIcon className="size-3.5 shrink-0 text-primary" />
+          <span className="text-xs text-muted-foreground/50">›</span>
           <input
             ref={newGroupInputRef}
             value={newGroupName}
@@ -737,12 +719,12 @@ export function FileSidebar({
               }
             }}
             placeholder="Group name…"
-            className="h-6 min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60"
+            className="h-full min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/50"
           />
           <button
             type="submit"
             disabled={!newGroupName.trim()}
-            className="flex size-5 items-center justify-center rounded text-primary hover:bg-primary/10 disabled:opacity-40"
+            className="flex size-4 items-center justify-center rounded text-primary hover:bg-primary/10 disabled:opacity-30"
             aria-label="Save group"
           >
             <CheckIcon className="size-3" />
@@ -753,7 +735,7 @@ export function FileSidebar({
               setIsCreatingGroup(false);
               setNewGroupName("");
             }}
-            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent"
+            className="flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-accent"
             aria-label="Cancel"
           >
             <XIcon className="size-3" />
@@ -832,7 +814,7 @@ export function FileSidebar({
             </button>
           </div>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {groups.map((group) => renderGroup(group))}
             {renderUngroupedSection()}
           </ul>
