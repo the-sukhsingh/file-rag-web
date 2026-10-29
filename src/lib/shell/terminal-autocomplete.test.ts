@@ -59,3 +59,4 @@ describe("terminal-autocomplete", () => {
     expect(result.ghostText).toBe("ni probability /workspace");
   });
 });
+
