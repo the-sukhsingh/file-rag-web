@@ -150,6 +150,8 @@ export interface GroqOptions {
   maxTokens?: number;
   /** The tools the model may call. */
   tools?: GroqTool[];
+  /** Control tool calling behavior: auto (default), required (force tool call), or none. */
+  toolChoice?: "auto" | "required" | "none";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -492,7 +494,7 @@ async function request(
                   parameters: tool.parameters,
                 },
               })),
-              tool_choice: "auto",
+              tool_choice: options.toolChoice ?? "auto",
             }
           : {}),
       }),

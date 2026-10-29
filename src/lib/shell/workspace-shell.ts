@@ -86,7 +86,7 @@ export async function createWorkspaceShell(
       suffix += 1;
     }
 
-    files[unique] = chunk.text;
+    files[unique] = `<!-- Source: [${chunkByPath.size + 1}] ${documentName} · Page ${chunk.startPage ?? 1} -->\n${chunk.text}`;
     chunkByPath.set(unique, chunk.id);
   }
 
@@ -148,16 +148,19 @@ export async function createWorkspaceShell(
  * The instructions the agent gets for the shell.
  */
 export const SHELL_INSTRUCTIONS = [
-  "You also have a shell over the same passages, mounted as files under",
-  `${WORKSPACE_ROOT}. Each passage is one markdown file, and the path shows`,
-  "the document, the chapter and the passage number.",
+  "You have a real virtual bash shell over the workspace passages, mounted as markdown files under",
+  `${WORKSPACE_ROOT}. Each passage is one markdown file, organized by document and section:`,
+  `  ${WORKSPACE_ROOT}/<document-name>/<section-name>/<passage-index>.md`,
   "",
-  "Use it when a question is about a term, a name, a number or a phrase that",
-  "the vector search may have missed - the shell is exact, the search is by",
-  "meaning. For example:",
-  `  grep -rn "probability" ${WORKSPACE_ROOT}`,
-  `  ls ${WORKSPACE_ROOT}/Handbook`,
-  `  wc -l ${WORKSPACE_ROOT}/Handbook/*/*.md`,
+  "CRITICAL INSTRUCTIONS FOR SHELL KNOWLEDGE RETRIEVAL:",
+  "- The user prompt DOES NOT provide the text contents of the documents.",
+  "- You MUST execute shell commands to search, discover, and read the relevant files before answering.",
+  "- To find information:",
+  `  1. Discover files: find ${WORKSPACE_ROOT} -type f | head -30`,
+  `  2. Search for keywords or phrases: grep -rni "keyword" ${WORKSPACE_ROOT}`,
+  `  3. Read passage contents: cat ${WORKSPACE_ROOT}/<path-to-passage>.md`,
+  `  4. Inspect headings or sections: head -n 30 ${WORKSPACE_ROOT}/<path-to-passage>.md`,
   "",
-  "Read a passage with `cat`, not with the whole file, when a file is long.",
+  "- Always cite the files or passages you read with their bracketed citation numbers (e.g. [1], [2]) found in the files.",
+  "- Base your answer strictly on the content you read through the shell commands. Never guess.",
 ].join("\n");
