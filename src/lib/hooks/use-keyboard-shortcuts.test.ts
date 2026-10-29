@@ -60,6 +60,17 @@ describe("keyboard shortcuts handler", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it("handles Ctrl+` and Ctrl+J to toggle terminal", () => {
+    const onToggleTerminal = vi.fn();
+    const eventBacktick = createMockEvent({ key: "`", ctrlKey: true });
+    handleKeyboardShortcut(eventBacktick, { onToggleTerminal });
+
+    const eventJ = createMockEvent({ key: "j", ctrlKey: true });
+    handleKeyboardShortcut(eventJ, { onToggleTerminal });
+
+    expect(onToggleTerminal).toHaveBeenCalledTimes(2);
+  });
+
   it("handles 'd' or 'D' when not in editable element to toggle theme", () => {
     const onToggleTheme = vi.fn();
     const target = createMockElement("DIV");

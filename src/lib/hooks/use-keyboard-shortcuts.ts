@@ -24,6 +24,7 @@ export function isMac(): boolean {
 
 export interface ShortcutHandlers {
   onToggleSidebar?: () => void;
+  onToggleTerminal?: () => void;
   onToggleTheme?: () => void;
   onFocusPrompt?: () => void;
   onNewConversation?: () => void;
@@ -45,6 +46,13 @@ export function handleKeyboardShortcut(
   if (isModifier && !event.shiftKey && key === "b") {
     event.preventDefault();
     handlers.onToggleSidebar?.();
+    return true;
+  }
+
+  // Ctrl+` / Cmd+` or Ctrl+J / Cmd+J: Toggle bottom terminal dock
+  if (isModifier && (key === "`" || key === "~" || key === "j")) {
+    event.preventDefault();
+    handlers.onToggleTerminal?.();
     return true;
   }
 

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useTheme } from "next-themes";
-import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, KeyRoundIcon, KeyboardIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
+import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, KeyRoundIcon, KeyboardIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, TerminalIcon, UploadIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { ChatHistory } from "@/components/chat/chat-history";
@@ -14,6 +14,7 @@ import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { FileSidebar, type UploadState } from "@/components/library/file-sidebar";
 import { useLibrary } from "@/components/library/library-provider";
 import { useSettings } from "@/components/library/settings-provider";
+import { TerminalPanel } from "@/components/terminal/terminal-panel";
 import { ModeToggle } from "@/components/theme/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,6 +24,7 @@ import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import { parsePrompt, resolveTargetDocuments } from "@/lib/chat/commands";
 import { useKeyboardShortcuts } from "@/lib/hooks/use-keyboard-shortcuts";
+import { useWorkspaceShell } from "@/lib/shell/use-workspace-shell";
 import { getSingleGroupContext, selectOnlyGroup, toggleGroupSelection } from "@/lib/library/groups";
 import { listChunksByDocument } from "@/lib/library/store";
 import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
@@ -82,6 +84,7 @@ export default function WorkspacePage() {
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
+  const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
   const [upload, setUpload] = React.useState<UploadState | null>(null);
@@ -105,6 +108,8 @@ export default function WorkspacePage() {
     ? new Set(library.documents.filter((document) => !activeDocumentIds.includes(document.id)).map((document) => document.id))
     : draftExcludedIds;
   const selectedDocuments = library.documents.filter((document) => !excludedIds.has(document.id));
+  const activeDocsForShell = selectedDocuments.length > 0 ? selectedDocuments : library.documents;
+  const workspaceShell = useWorkspaceShell(activeDocsForShell);
   const hasReadableFiles = selectedDocuments.some((document) => document.chunkCount > 0);
   const locked = isBusy || isRemoving || !history.ready;
   const savedSources = new Map(history.activeConversation?.sources.map((entry) => [entry.chunk.id, entry]) ?? []);
@@ -174,6 +179,9 @@ export default function WorkspacePage() {
       } else {
         setIsSidebarOpen((open) => !open);
       }
+    },
+    onToggleTerminal: () => {
+      setIsTerminalOpen((open) => !open);
     },
     onToggleTheme: () => {
       setTheme(resolvedTheme === "dark" ? "light" : "dark");
@@ -593,17 +601,32 @@ export default function WorkspacePage() {
               <span className="min-w-0 truncate text-muted-foreground">{history.activeConversation?.title ?? "New chat"}</span>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={locked || !!upload || messages.length === 0}
-            onClick={() => openConversation(null)}
-            aria-label="New chat"
-            title="New conversation (Ctrl+N or C)"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <SquarePenIcon className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={isTerminalOpen ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => setIsTerminalOpen((open) => !open)}
+              aria-label="Toggle terminal"
+              title="Toggle terminal (Ctrl+` or Ctrl+J)"
+              className={cn(
+                "text-muted-foreground hover:text-foreground",
+                isTerminalOpen && "bg-accent text-accent-foreground"
+              )}
+            >
+              <TerminalIcon className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={locked || !!upload || messages.length === 0}
+              onClick={() => openConversation(null)}
+              aria-label="New chat"
+              title="New conversation (Ctrl+N or C)"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <SquarePenIcon className="size-4" />
+            </Button>
+          </div>
         </header>
         {history.error && <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive sm:px-8"><p>{history.error}</p><button type="button" onClick={history.retry} className="shrink-0 rounded-sm font-medium underline underline-offset-4">Retry</button></div>}
 
@@ -664,6 +687,14 @@ export default function WorkspacePage() {
         {dragging && !locked && !upload && (
           <div className="pointer-events-none absolute inset-3 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-background/95 text-primary"><UploadIcon className="size-7" /><p className="text-sm font-medium">Drop your PDFs here</p><p className="text-xs text-muted-foreground">Up to 50 MB per file</p></div>
         )}
+
+        <TerminalPanel
+          isOpen={isTerminalOpen}
+          onClose={() => setIsTerminalOpen(false)}
+          files={workspaceShell.files}
+          passageCount={workspaceShell.passageCount}
+          onRunCommand={workspaceShell.runCommand}
+        />
       </main>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />

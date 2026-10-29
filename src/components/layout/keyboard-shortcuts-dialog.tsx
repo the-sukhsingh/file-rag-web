@@ -39,6 +39,7 @@ export function KeyboardShortcutsDialog({
       title: "Workspace & Layout",
       shortcuts: [
         { label: "Toggle sidebar", keys: [mod, "B"] },
+        { label: "Toggle terminal dock", keys: [mod, "`"], altKey: `${mod}+J` },
         { label: "Toggle theme (Light / Dark)", keys: ["D"] },
         { label: "Toggle theme (Global)", keys: [mod, "Shift", "D"] },
         { label: "Switch Files / Chats view", keys: [mod, "Shift", "S"] },
@@ -117,3 +118,4 @@ export function KeyboardShortcutsDialog({
     </Dialog>
   );
 }
+
