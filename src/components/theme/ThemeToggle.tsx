@@ -72,7 +72,7 @@ export function ModeToggle({ className }: { className?: string }) {
           <button
             type="button"
             aria-label={`Theme: ${theme ?? "system"}`}
-            title="Change the theme"
+            title="Change theme (Press D)"
             className={cn(
               "flex size-8 items-center justify-center rounded-[8px] text-bark-grey transition-colors hover:bg-stone-mist/60 hover:text-charcoal",
               className

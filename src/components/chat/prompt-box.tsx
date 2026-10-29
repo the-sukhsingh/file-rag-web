@@ -348,6 +348,7 @@ export function PromptBox({
         >
           <textarea
             ref={textareaRef}
+            data-prompt-textarea
             aria-label="Ask a question about your files"
             value={text}
             rows={2}

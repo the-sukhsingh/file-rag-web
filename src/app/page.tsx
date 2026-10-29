@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, KeyRoundIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
+import { useTheme } from "next-themes";
+import { AlignLeftIcon, BookOpenIcon, FileTextIcon, FilesIcon, GitCompareArrowsIcon, KeyRoundIcon, KeyboardIcon, LightbulbIcon, MessagesSquareIcon, PanelLeftCloseIcon, PanelLeftIcon, PlusIcon, RefreshCwIcon, Settings2Icon, SparklesIcon, SquarePenIcon, UploadIcon } from "lucide-react";
 import { cn } from "cn";
 
 import { ChatHistory } from "@/components/chat/chat-history";
 import { MessageList } from "@/components/chat/message-list";
 import { PromptBox } from "@/components/chat/prompt-box";
 import { useChatHistory } from "@/components/chat/use-chat-history";
+import { KeyboardShortcutsDialog } from "@/components/layout/keyboard-shortcuts-dialog";
 import { SettingsDialog } from "@/components/layout/settings-dialog";
 import { FileSidebar, type UploadState } from "@/components/library/file-sidebar";
 import { useLibrary } from "@/components/library/library-provider";
@@ -20,6 +22,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
 import { parsePrompt, resolveTargetDocuments } from "@/lib/chat/commands";
+import { useKeyboardShortcuts } from "@/lib/hooks/use-keyboard-shortcuts";
 import { getSingleGroupContext, selectOnlyGroup, toggleGroupSelection } from "@/lib/library/groups";
 import { listChunksByDocument } from "@/lib/library/store";
 import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
@@ -74,9 +77,11 @@ export default function WorkspacePage() {
   const mounted = React.useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
   const [sidebarView, setSidebarView] = React.useState<SidebarView | null>(null);
   const [ideaIndex, setIdeaIndex] = React.useState(0);
+  const { resolvedTheme, setTheme } = useTheme();
   const [draftExcludedIds, setDraftExcludedIds] = React.useState(new Set<string>());
   const [isBusy, setIsBusy] = React.useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = React.useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
   const [upload, setUpload] = React.useState<UploadState | null>(null);
@@ -161,6 +166,35 @@ export default function WorkspacePage() {
     setIsMobileSidebarOpen(false);
     setChatVersion((value) => value + 1);
   };
+
+  useKeyboardShortcuts({
+    onToggleSidebar: () => {
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
+        setIsMobileSidebarOpen((open) => !open);
+      } else {
+        setIsSidebarOpen((open) => !open);
+      }
+    },
+    onToggleTheme: () => {
+      setTheme(resolvedTheme === "dark" ? "light" : "dark");
+    },
+    onFocusPrompt: () => {
+      const textarea = document.querySelector<HTMLTextAreaElement>("textarea[data-prompt-textarea]");
+      textarea?.focus();
+    },
+    onNewConversation: () => {
+      openConversation(null);
+    },
+    onToggleSidebarView: () => {
+      changeSidebarView(activeView === "files" ? "chats" : "files");
+    },
+    onOpenSettings: () => {
+      setIsSettingsOpen(true);
+    },
+    onOpenShortcuts: () => {
+      setIsShortcutsOpen((open) => !open);
+    },
+  });
 
   const handleFiles = async (files: File[], targetGroupId?: string | null) => {
     if (uploadingRef.current || locked || !files.length) return;
@@ -369,7 +403,7 @@ export default function WorkspacePage() {
           size="icon-sm"
           className="-mr-1.5 ml-auto hidden text-muted-foreground/70 hover:text-foreground md:inline-flex"
           aria-label="Collapse sidebar"
-          title="Collapse sidebar"
+          title="Collapse sidebar (Ctrl+B)"
           onClick={() => setIsSidebarOpen(false)}
         >
           <PanelLeftCloseIcon className="size-4" />
@@ -381,6 +415,7 @@ export default function WorkspacePage() {
             type="button"
             onClick={() => changeSidebarView("files")}
             aria-current={activeView === "files" ? "page" : undefined}
+            title="Files view (Ctrl+Shift+S)"
             className={cn(
               "flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[11px] transition-colors",
               activeView === "files" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.07)]" : "text-muted-foreground hover:text-foreground"
@@ -393,6 +428,7 @@ export default function WorkspacePage() {
             type="button"
             onClick={() => changeSidebarView("chats")}
             aria-current={activeView === "chats" ? "page" : undefined}
+            title="Chats view (Ctrl+Shift+S)"
             className={cn(
               "flex h-7 items-center justify-center gap-1.5 rounded-[6px] text-[11px] transition-colors",
               activeView === "chats" ? "bg-card font-medium text-foreground shadow-[0_1px_2px_rgba(23,33,28,0.07)]" : "text-muted-foreground hover:text-foreground"
@@ -453,6 +489,7 @@ export default function WorkspacePage() {
           type="button"
           disabled={!history.ready || locked || !!upload || messages.length === 0}
           onClick={() => openConversation(null)}
+          title="New conversation (Ctrl+N or C)"
           className="flex h-8 w-full items-center gap-2 rounded-lg px-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         >
           <SquarePenIcon className="size-3.5" /> New conversation
@@ -460,7 +497,17 @@ export default function WorkspacePage() {
       </div>
       <div className="flex shrink-0 items-center gap-1 border-t border-border/60 px-2.5 py-1.5">
         <Button variant="ghost" onClick={() => { setIsMobileSidebarOpen(false); setIsSettingsOpen(true); }} className="-ml-1.5 h-8 gap-2 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"><Settings2Icon className="size-3.5" /> Settings</Button>
-        <ModeToggle className="ml-auto size-8" />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setIsShortcutsOpen(true)}
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+          className="ml-auto size-8 text-muted-foreground/70 hover:text-foreground"
+        >
+          <KeyboardIcon className="size-3.5" />
+        </Button>
+        <ModeToggle className="size-8" />
       </div>
     </aside>
   );
@@ -531,8 +578,8 @@ export default function WorkspacePage() {
                 variant="ghost"
                 size="icon"
                 className="hidden size-8 md:inline-flex"
-                aria-label="Expand sidebar"
-                title="Expand sidebar"
+                aria-label="Expand sidebar (Ctrl+B)"
+                title="Expand sidebar (Ctrl+B)"
                 aria-expanded={false}
                 aria-controls="desktop-workspace-sidebar"
                 onClick={() => setIsSidebarOpen(true)}
@@ -546,7 +593,17 @@ export default function WorkspacePage() {
               <span className="min-w-0 truncate text-muted-foreground">{history.activeConversation?.title ?? "New chat"}</span>
             </div>
           </div>
-          <Button variant="ghost" size="icon-sm" disabled={locked || !!upload || messages.length === 0} onClick={() => openConversation(null)} aria-label="New chat" title="New chat" className="text-muted-foreground hover:text-foreground"><SquarePenIcon className="size-4" /></Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={locked || !!upload || messages.length === 0}
+            onClick={() => openConversation(null)}
+            aria-label="New chat"
+            title="New conversation (Ctrl+N or C)"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <SquarePenIcon className="size-4" />
+          </Button>
         </header>
         {history.error && <div role="alert" className="flex shrink-0 items-start justify-between gap-3 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-[11px] leading-5 text-destructive sm:px-8"><p>{history.error}</p><button type="button" onClick={history.retry} className="shrink-0 rounded-sm font-medium underline underline-offset-4">Retry</button></div>}
 
@@ -610,6 +667,7 @@ export default function WorkspacePage() {
       </main>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      <KeyboardShortcutsDialog open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen} />
       <Dialog open={!!pendingRemoval} onOpenChange={(open) => { if (!open && !isRemoving) setPendingRemoval(null); }}>
         <DialogContent>
           <DialogHeader>
