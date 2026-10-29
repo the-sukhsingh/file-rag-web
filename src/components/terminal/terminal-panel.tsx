@@ -5,10 +5,9 @@ import {
   AlertCircleIcon,
   CheckIcon,
   ChevronRightIcon,
-  CornerDownLeftIcon,
   FileTextIcon,
   FolderIcon,
-  HelpCircleIcon,
+  HistoryIcon,
   Maximize2Icon,
   Minimize2Icon,
   TerminalIcon,
@@ -78,7 +77,7 @@ export function TerminalPanel({
     }
   }, [isOpen]);
 
-  // Auto scroll to bottom on new output
+  // Auto scroll to bottom on new output or prompt changes
   React.useEffect(() => {
     if (terminalBodyRef.current) {
       terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
@@ -381,7 +380,7 @@ export function TerminalPanel({
   return (
     <div
       className={cn(
-        "relative flex flex-col w-full border-t border-zinc-800 bg-zinc-950 text-zinc-100 font-mono shadow-2xl transition-all duration-150 z-30 select-text",
+        "relative flex flex-col w-full border-t border-border bg-card dark:bg-zinc-950 text-foreground dark:text-zinc-100 font-mono shadow-2xl transition-all duration-150 z-30 select-text",
         className
       )}
       style={{ height: `${currentHeight}px` }}
@@ -395,18 +394,18 @@ export function TerminalPanel({
         className="group absolute -top-1.5 inset-x-0 h-3 cursor-row-resize flex items-center justify-center z-40 touch-none"
         title="Drag to resize · Double click to maximize"
       >
-        <div className="h-1 w-12 rounded-full bg-zinc-700/60 group-hover:bg-emerald-500/80 transition-colors" />
+        <div className="h-1 w-12 rounded-full bg-muted-foreground/30 group-hover:bg-primary transition-colors" />
       </div>
 
       {/* Terminal Title Bar */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-3 text-xs select-none">
-        <div className="flex items-center gap-2 text-zinc-300">
-          <TerminalIcon className="size-3.5 text-emerald-400" />
-          <span className="font-semibold text-zinc-200">Terminal</span>
-          <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-400">
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/80 bg-muted/60 dark:bg-zinc-900/90 px-3 text-xs select-none">
+        <div className="flex items-center gap-2 text-foreground/80 dark:text-zinc-300">
+          <TerminalIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+          <span className="font-semibold text-foreground dark:text-zinc-200">Terminal</span>
+          <span className="rounded border border-border/60 bg-background/80 dark:bg-zinc-800/80 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:text-zinc-400">
             quarry:/workspace
           </span>
-          <span className="hidden sm:inline-block text-[11px] text-zinc-500">
+          <span className="hidden sm:inline-block text-[11px] text-muted-foreground dark:text-zinc-500">
             ({passageCount} {passageCount === 1 ? "passage" : "passages"} mounted)
           </span>
         </div>
@@ -416,7 +415,7 @@ export function TerminalPanel({
           <button
             type="button"
             onClick={() => setEntries([])}
-            className="flex size-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+            className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
             title="Clear Terminal (Ctrl+L)"
             aria-label="Clear terminal output"
           >
@@ -427,7 +426,7 @@ export function TerminalPanel({
           <button
             type="button"
             onClick={() => setIsMaximized((prev) => !prev)}
-            className="flex size-6 items-center justify-center rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+            className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200 transition-colors"
             title={isMaximized ? "Restore Height" : "Maximize Terminal"}
             aria-label="Toggle maximize terminal"
           >
@@ -442,7 +441,7 @@ export function TerminalPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-6 items-center justify-center rounded text-zinc-400 hover:bg-red-950/60 hover:text-red-300 transition-colors"
+            className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/15 hover:text-destructive dark:text-zinc-400 dark:hover:bg-red-950/60 dark:hover:text-red-300 transition-colors"
             title="Close Terminal (Ctrl+`)"
             aria-label="Close terminal"
           >
@@ -459,19 +458,20 @@ export function TerminalPanel({
       >
         {/* Welcome message */}
         {entries.length === 0 && (
-          <div className="text-zinc-400 space-y-1 mb-3 text-[11px] sm:text-xs border-b border-zinc-900 pb-2.5">
-            <div className="text-emerald-400 font-semibold">
+          <div className="text-muted-foreground dark:text-zinc-400 space-y-1 mb-3 text-[11px] sm:text-xs border-b border-border/40 dark:border-zinc-900 pb-2.5">
+            <div className="text-emerald-600 dark:text-emerald-400 font-semibold">
               Quarry Virtual Workspace Bash [just-bash/browser]
             </div>
             <div>
               Connected to virtual filesystem at{" "}
-              <span className="text-zinc-300">/workspace</span> with {passageCount} passages.
+              <span className="text-foreground dark:text-zinc-300 font-medium">/workspace</span> with{" "}
+              {passageCount} passages.
             </div>
-            <div className="text-zinc-500">
-              Type <span className="text-emerald-300">help</span> for commands, or try{" "}
-              <span className="text-zinc-300">ls -la</span>,{" "}
-              <span className="text-zinc-300">grep -rni &quot;text&quot; .</span>,{" "}
-              <span className="text-zinc-300">find /workspace -type f</span>.
+            <div className="text-muted-foreground/80 dark:text-zinc-500">
+              Type <span className="text-emerald-600 dark:text-emerald-300 font-medium">help</span> for commands, or try{" "}
+              <span className="text-foreground/90 dark:text-zinc-300">ls -la</span>,{" "}
+              <span className="text-foreground/90 dark:text-zinc-300">grep -rni &quot;text&quot; .</span>,{" "}
+              <span className="text-foreground/90 dark:text-zinc-300">find /workspace -type f</span>.
             </div>
           </div>
         )}
@@ -479,14 +479,18 @@ export function TerminalPanel({
         {/* History Entries */}
         {entries.map((entry) => (
           <div key={entry.id} className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs text-zinc-300">
-              <span className="text-emerald-400 font-semibold">quarry:/workspace$</span>
-              <span className="font-mono text-zinc-100">{entry.command}</span>
-              <span className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
+            <div className="flex items-center gap-1.5 text-xs text-foreground/80 dark:text-zinc-300">
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                quarry:/workspace$
+              </span>
+              <span className="font-mono text-foreground dark:text-zinc-100 font-medium">
+                {entry.command}
+              </span>
+              <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground dark:text-zinc-500">
                 {entry.exitCode === 0 ? (
-                  <CheckIcon className="size-3 text-emerald-400" />
+                  <CheckIcon className="size-3 text-emerald-600 dark:text-emerald-400" />
                 ) : (
-                  <span className="flex items-center gap-0.5 text-red-400">
+                  <span className="flex items-center gap-0.5 text-destructive">
                     <AlertCircleIcon className="size-3" />
                     exit {entry.exitCode}
                   </span>
@@ -497,14 +501,14 @@ export function TerminalPanel({
 
             {/* stdout */}
             {entry.stdout && (
-              <pre className="whitespace-pre-wrap break-all text-zinc-300 font-mono text-[11px] sm:text-xs pl-2 border-l border-zinc-800">
+              <pre className="whitespace-pre-wrap break-all text-foreground/90 dark:text-zinc-200 font-mono text-[11px] sm:text-xs pl-2.5 border-l-2 border-border/70 dark:border-zinc-800">
                 {entry.stdout}
               </pre>
             )}
 
             {/* stderr */}
             {entry.stderr && (
-              <pre className="whitespace-pre-wrap break-all text-red-400 font-mono text-[11px] sm:text-xs pl-2 border-l border-red-900/60">
+              <pre className="whitespace-pre-wrap break-all text-destructive font-mono text-[11px] sm:text-xs pl-2.5 border-l-2 border-destructive/50">
                 {entry.stderr}
               </pre>
             )}
@@ -514,7 +518,7 @@ export function TerminalPanel({
         {/* Active Command Line Input */}
         <div className="relative pt-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-emerald-400 font-semibold shrink-0 select-none">
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold shrink-0 select-none">
               quarry:/workspace$
             </span>
 
@@ -523,7 +527,7 @@ export function TerminalPanel({
               {autocomplete.ghostText && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 flex items-center font-mono text-xs sm:text-[13px] text-zinc-500/70 select-none overflow-hidden"
+                  className="pointer-events-none absolute inset-0 flex items-center font-mono text-xs sm:text-[13px] text-muted-foreground/50 dark:text-zinc-500/70 select-none overflow-hidden"
                 >
                   <span className="invisible whitespace-pre">{input}</span>
                   <span className="whitespace-pre">{autocomplete.ghostText}</span>
@@ -541,16 +545,20 @@ export function TerminalPanel({
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck="false"
-                className="w-full bg-transparent border-0 outline-none p-0 m-0 font-mono text-xs sm:text-[13px] text-zinc-100 placeholder:text-zinc-600 focus:ring-0 focus:outline-none"
-                placeholder={isRunning ? "Running command..." : "Type command, 'help', or press Tab to auto-complete…"}
+                className="w-full bg-transparent border-0 outline-none p-0 m-0 font-mono text-xs sm:text-[13px] text-foreground dark:text-zinc-100 placeholder:text-muted-foreground/60 dark:placeholder:text-zinc-600 focus:ring-0 focus:outline-none"
+                placeholder={
+                  isRunning
+                    ? "Running command..."
+                    : "Type command, 'help', or press Tab to auto-complete…"
+                }
               />
             </div>
 
             {/* Ghost text pill indicator */}
             {autocomplete.ghostText && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-zinc-500 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded select-none">
+              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/60 dark:bg-zinc-900 border border-border dark:border-zinc-800 px-1.5 py-0.5 rounded select-none">
                 <span>Tab / →</span>
-                <span className="text-zinc-400">accept</span>
+                <span className="text-foreground/80 dark:text-zinc-400 font-medium">accept</span>
               </span>
             )}
           </div>
@@ -558,15 +566,20 @@ export function TerminalPanel({
           {/* Autocomplete Suggestions Menu */}
           {isSuggestionOpen && autocomplete.suggestions.length > 0 && (
             <div
-              className="absolute bottom-full mb-1 left-4 max-w-lg w-full max-h-52 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/95 backdrop-blur shadow-2xl p-1 z-50 divide-y divide-zinc-800/40 text-xs"
+              className="absolute bottom-full mb-1.5 left-4 max-w-md w-full max-h-56 overflow-y-auto rounded-xl border border-border/80 bg-popover/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-2xl p-1 z-50 text-xs [scrollbar-width:thin]"
               role="listbox"
               aria-label="Shell completions"
             >
-              <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                <span>Suggestions ({autocomplete.suggestions.length})</span>
-                <span className="lowercase font-normal">↑↓ to navigate · Enter/Tab to insert</span>
+              {/* Header */}
+              <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground/80 tracking-wider flex items-center justify-between border-b border-border/40 dark:border-zinc-800/60 pb-1 mb-0.5 select-none">
+                <span className="uppercase">Suggestions ({autocomplete.suggestions.length})</span>
+                <span className="lowercase font-normal text-muted-foreground/60">
+                  ↑↓ navigate · Tab/Enter complete
+                </span>
               </div>
-              <div className="pt-0.5 space-y-0.5">
+
+              {/* Items */}
+              <div className="space-y-0.5">
                 {autocomplete.suggestions.map((suggestion, idx) => {
                   const isSelected = idx === selectedSuggestionIndex;
                   return (
@@ -578,29 +591,37 @@ export function TerminalPanel({
                         applySuggestion(suggestion);
                       }}
                       className={cn(
-                        "w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-left font-mono transition-colors",
+                        "w-full flex items-center justify-between gap-2.5 px-2.5 py-1.5 rounded-lg text-left font-mono transition-colors",
                         isSelected
-                          ? "bg-emerald-500/20 text-emerald-300 font-medium"
-                          : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
+                          ? "bg-primary/10 text-primary dark:bg-emerald-500/20 dark:text-emerald-300 font-medium"
+                          : "text-foreground/80 dark:text-zinc-300 hover:bg-muted/60 dark:hover:bg-zinc-800/80 hover:text-foreground dark:hover:text-zinc-100"
                       )}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        <span
-                          className={cn(
-                            "text-[9px] uppercase px-1 py-0.2 rounded font-semibold shrink-0 tracking-wider",
-                            suggestion.type === "command" && "bg-blue-950 text-blue-300 border border-blue-800",
-                            suggestion.type === "file" && "bg-purple-950 text-purple-300 border border-purple-800",
-                            suggestion.type === "directory" && "bg-amber-950 text-amber-300 border border-amber-800",
-                            suggestion.type === "flag" && "bg-cyan-950 text-cyan-300 border border-cyan-800",
-                            suggestion.type === "history" && "bg-zinc-800 text-zinc-300 border border-zinc-700"
-                          )}
-                        >
-                          {suggestion.type === "directory" ? "dir" : suggestion.type}
-                        </span>
+                        {/* Subtle semantic icon instead of heavy block badge */}
+                        {suggestion.type === "directory" && (
+                          <FolderIcon className="size-3.5 text-amber-500/90 dark:text-amber-400 shrink-0" />
+                        )}
+                        {suggestion.type === "file" && (
+                          <FileTextIcon className="size-3.5 text-blue-500/90 dark:text-blue-400 shrink-0" />
+                        )}
+                        {suggestion.type === "command" && (
+                          <TerminalIcon className="size-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                        )}
+                        {suggestion.type === "flag" && (
+                          <span className="text-[10px] text-cyan-600 dark:text-cyan-400 font-bold shrink-0">
+                            --
+                          </span>
+                        )}
+                        {suggestion.type === "history" && (
+                          <HistoryIcon className="size-3.5 text-muted-foreground shrink-0" />
+                        )}
+
                         <span className="truncate">{suggestion.display || suggestion.value}</span>
                       </div>
+
                       {suggestion.description && (
-                        <span className="text-[10px] text-zinc-500 shrink-0 truncate max-w-[200px]">
+                        <span className="text-[10px] text-muted-foreground/70 dark:text-zinc-500 shrink-0 truncate max-w-[170px]">
                           {suggestion.description}
                         </span>
                       )}
@@ -615,4 +636,3 @@ export function TerminalPanel({
     </div>
   );
 }
-

@@ -14,14 +14,14 @@ export interface AutocompleteResult {
 }
 
 export const SHELL_COMMANDS: Array<{ name: string; desc: string }> = [
-  { name: "grep", desc: "Search files for lines matching pattern (e.g. grep -rni 'term' .)" },
-  { name: "rg", desc: "Fast ripgrep pattern search" },
-  { name: "cat", desc: "Print file contents to screen (e.g. cat path/to/file.md)" },
-  { name: "ls", desc: "List files and directories" },
-  { name: "find", desc: "Find files in directory hierarchy (e.g. find /workspace -type f)" },
-  { name: "head", desc: "Output first lines of files (e.g. head -n 20 file.md)" },
-  { name: "tail", desc: "Output last lines of files (e.g. tail -n 20 file.md)" },
-  { name: "wc", desc: "Print newline, word, and byte count (e.g. wc -l file.md)" },
+  { name: "grep", desc: "Search files for pattern: grep -rni 'term' ." },
+  { name: "rg", desc: "Fast ripgrep pattern search: rg 'pattern'" },
+  { name: "cat", desc: "Print file contents: cat <path>" },
+  { name: "ls", desc: "List files and directories: ls -la" },
+  { name: "find", desc: "Find files in hierarchy: find /workspace -type f" },
+  { name: "head", desc: "Output first lines: head -n 20 <path>" },
+  { name: "tail", desc: "Output last lines: tail -n 20 <path>" },
+  { name: "wc", desc: "Count lines/words: wc -l <path>" },
   { name: "tree", desc: "Display directory structure as tree" },
   { name: "pwd", desc: "Print current working directory" },
   { name: "clear", desc: "Clear terminal screen" },
@@ -36,7 +36,7 @@ export const COMMON_FLAGS: Record<string, Array<{ flag: string; desc: string }>>
     { flag: "-r", desc: "Search recursively" },
     { flag: "-n", desc: "Show line numbers" },
     { flag: "-i", desc: "Ignore case" },
-    { flag: "-rni", desc: "Recursive, numbered, case-insensitive search" },
+    { flag: "-rni", desc: "Recursive, numbered, case-insensitive" },
     { flag: "-l", desc: "List matching filenames only" },
     { flag: "-c", desc: "Count matching lines" },
   ],
@@ -54,12 +54,8 @@ export const COMMON_FLAGS: Record<string, Array<{ flag: string; desc: string }>>
     { flag: "-a", desc: "Show all files including hidden" },
     { flag: "-la", desc: "Long format including hidden" },
   ],
-  head: [
-    { flag: "-n", desc: "Number of lines to output" },
-  ],
-  tail: [
-    { flag: "-n", desc: "Number of lines to output" },
-  ],
+  head: [{ flag: "-n", desc: "Number of lines to output" }],
+  tail: [{ flag: "-n", desc: "Number of lines to output" }],
   wc: [
     { flag: "-l", desc: "Count lines" },
     { flag: "-w", desc: "Count words" },
@@ -68,44 +64,89 @@ export const COMMON_FLAGS: Record<string, Array<{ flag: string; desc: string }>>
 };
 
 /**
- * Builds directories and file lists suitable for autocompletion from a list of mounted file paths.
+ * Returns immediate children (directories and files) at a given parent directory path,
+ * mimicking a real POSIX shell path completion.
  */
-export function buildFilesystemIndex(files: string[]): {
-  absolutePaths: Set<string>;
-  relativePaths: Set<string>;
-  directories: Set<string>;
-} {
-  const absolutePaths = new Set<string>();
-  const relativePaths = new Set<string>();
-  const directories = new Set<string>();
+export function getFilesystemChildren(
+  files: string[],
+  parentPath: string
+): Array<{ name: string; isDir: boolean; fullRelPath: string; count?: number }> {
+  // Normalize parent path relative to /workspace
+  let normParent = parentPath.trim().replace(/^"/, "").replace(/"$/, "");
+  if (normParent.startsWith("/workspace/")) {
+    normParent = normParent.slice("/workspace/".length);
+  } else if (normParent === "/workspace" || normParent === "/workspace/") {
+    normParent = "";
+  } else if (normParent.startsWith("/")) {
+    normParent = normParent.slice(1);
+  }
+  if (normParent.endsWith("/")) {
+    normParent = normParent.slice(0, -1);
+  }
+
+  const dirs = new Map<string, number>();
+  const directFiles = new Set<string>();
 
   for (const filePath of files) {
-    absolutePaths.add(filePath);
-
-    // Extract relative path from /workspace
     const rel = filePath.startsWith("/workspace/")
       ? filePath.slice("/workspace/".length)
       : filePath.startsWith("/workspace")
       ? filePath.slice("/workspace".length)
       : filePath;
 
-    if (rel) {
-      relativePaths.add(rel);
-    }
-
-    // Extract parent directories
-    const parts = filePath.split("/").filter(Boolean);
-    let cur = "";
-    for (let i = 0; i < parts.length - 1; i++) {
-      cur += "/" + parts[i];
-      directories.add(cur);
-      if (cur.startsWith("/workspace/")) {
-        directories.add(cur.slice("/workspace/".length));
+    if (!normParent) {
+      // Direct children of /workspace
+      const slashIdx = rel.indexOf("/");
+      if (slashIdx === -1) {
+        directFiles.add(rel);
+      } else {
+        const dirName = rel.slice(0, slashIdx);
+        dirs.set(dirName, (dirs.get(dirName) ?? 0) + 1);
+      }
+    } else {
+      // Must be under normParent
+      const prefix = normParent + "/";
+      if (rel.startsWith(prefix)) {
+        const sub = rel.slice(prefix.length);
+        const slashIdx = sub.indexOf("/");
+        if (slashIdx === -1) {
+          directFiles.add(sub);
+        } else {
+          const dirName = sub.slice(0, slashIdx);
+          dirs.set(dirName, (dirs.get(dirName) ?? 0) + 1);
+        }
       }
     }
   }
 
-  return { absolutePaths, relativePaths, directories };
+  const results: Array<{ name: string; isDir: boolean; fullRelPath: string; count?: number }> = [];
+
+  // Directories first (alphabetical)
+  const sortedDirs = Array.from(dirs.keys()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+  for (const d of sortedDirs) {
+    results.push({
+      name: `${d}/`,
+      isDir: true,
+      fullRelPath: normParent ? `${normParent}/${d}/` : `${d}/`,
+      count: dirs.get(d),
+    });
+  }
+
+  // Files second (natural sort, e.g. 001.md, 002.md, 010.md)
+  const sortedFiles = Array.from(directFiles).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+  );
+  for (const f of sortedFiles) {
+    results.push({
+      name: f,
+      isDir: false,
+      fullRelPath: normParent ? `${normParent}/${f}` : f,
+    });
+  }
+
+  return results;
 }
 
 /**
@@ -119,7 +160,7 @@ export function getActiveToken(input: string, cursor: number): {
   commandName: string;
 } {
   const textBefore = input.slice(0, cursor);
-  
+
   // Find start of current token
   let tokenStart = cursor;
   while (tokenStart > 0 && !/\s/.test(input[tokenStart - 1])) {
@@ -133,12 +174,16 @@ export function getActiveToken(input: string, cursor: number): {
   }
 
   const token = input.slice(tokenStart, tokenEnd);
-  
+
   // Parse command name (first non-whitespace token)
   const trimmedBefore = textBefore.trimStart();
   const firstWordMatch = trimmedBefore.match(/^([^\s]+)/);
   const commandName = firstWordMatch ? firstWordMatch[1] : "";
-  const isFirstWord = tokenStart <= (input.length - trimmedBefore.length + (firstWordMatch ? firstWordMatch[1].length : 0));
+  const isFirstWord =
+    tokenStart <=
+    input.length -
+      trimmedBefore.length +
+      (firstWordMatch ? firstWordMatch[1].length : 0);
 
   return { token, tokenStart, tokenEnd, isFirstWord, commandName };
 }
@@ -183,37 +228,34 @@ export function getTerminalCompletions(
       }
     }
 
-    // 3. Files and directories completion
-    const isAbs = token.startsWith("/");
-    const { absolutePaths, relativePaths, directories } = buildFilesystemIndex(files);
+    // 3. Hierarchical filesystem completion
+    const rawCleanToken = token.replace(/^"/, "").replace(/"$/, "");
+    const lastSlashIndex = rawCleanToken.lastIndexOf("/");
 
-    const targetList = isAbs ? Array.from(absolutePaths) : Array.from(relativePaths);
-    const targetDirs = Array.from(directories).filter((d) => (isAbs ? d.startsWith("/") : !d.startsWith("/")));
+    let parentPath = "";
+    let needle = rawCleanToken;
 
-    const lowToken = token.toLowerCase();
-
-    // Directory suggestions (append trailing slash)
-    for (const dir of targetDirs) {
-      const dirSlash = dir.endsWith("/") ? dir : `${dir}/`;
-      if (dirSlash.toLowerCase().startsWith(lowToken) && dirSlash !== token) {
-        // Only suggest immediate child directory level if possible
-        suggestions.push({
-          value: dirSlash.includes(" ") ? `"${dirSlash}"` : dirSlash,
-          display: dirSlash,
-          type: "directory",
-          description: "directory",
-        });
-      }
+    if (lastSlashIndex !== -1) {
+      parentPath = rawCleanToken.slice(0, lastSlashIndex + 1);
+      needle = rawCleanToken.slice(lastSlashIndex + 1);
     }
 
-    // File suggestions
-    for (const file of targetList) {
-      if (file.toLowerCase().startsWith(lowToken)) {
+    const lowNeedle = needle.toLowerCase();
+    const children = getFilesystemChildren(files, parentPath);
+
+    for (const child of children) {
+      if (!lowNeedle || child.name.toLowerCase().startsWith(lowNeedle)) {
+        const fullPath = parentPath + child.name;
+        const requiresQuotes = fullPath.includes(" ");
+        const completionVal = requiresQuotes ? `"${fullPath}"` : fullPath;
+
         suggestions.push({
-          value: file.includes(" ") ? `"${file}"` : file,
-          display: file,
-          type: "file",
-          description: "markdown passage",
+          value: completionVal,
+          display: child.name,
+          type: child.isDir ? "directory" : "file",
+          description: child.isDir
+            ? `${child.count ?? 1} item${(child.count ?? 1) === 1 ? "" : "s"}`
+            : "passage",
         });
       }
     }
@@ -244,8 +286,9 @@ export function getTerminalCompletions(
   // If no history ghost text, check if first suggestion can complete current token
   if (!ghostText && uniqueSuggestions.length > 0 && cursor === input.length && token.length > 0) {
     const firstVal = uniqueSuggestions[0].value.replace(/^"/, "").replace(/"$/, "");
-    if (firstVal.toLowerCase().startsWith(token.toLowerCase())) {
-      ghostText = firstVal.slice(token.length);
+    const cleanToken = token.replace(/^"/, "");
+    if (firstVal.toLowerCase().startsWith(cleanToken.toLowerCase())) {
+      ghostText = firstVal.slice(cleanToken.length);
     }
   }
 
@@ -253,8 +296,7 @@ export function getTerminalCompletions(
     token,
     tokenStart,
     tokenEnd,
-    suggestions: uniqueSuggestions.slice(0, 20),
+    suggestions: uniqueSuggestions.slice(0, 15),
     ghostText,
   };
 }
-

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildFilesystemIndex,
+  getFilesystemChildren,
   getActiveToken,
   getTerminalCompletions,
 } from "./terminal-autocomplete";
@@ -9,16 +9,36 @@ describe("terminal-autocomplete", () => {
   const mockFiles = [
     "/workspace/math.pdf/Chapter 1/001.md",
     "/workspace/math.pdf/Chapter 1/002.md",
+    "/workspace/math.pdf/Chapter 2/001.md",
     "/workspace/physics.pdf/Intro/001.md",
   ];
 
-  it("builds index of directories and files correctly", () => {
-    const { absolutePaths, relativePaths, directories } = buildFilesystemIndex(mockFiles);
+  it("lists immediate children of root /workspace", () => {
+    const children = getFilesystemChildren(mockFiles, "");
+    const names = children.map((c) => c.name);
     
-    expect(absolutePaths.has("/workspace/math.pdf/Chapter 1/001.md")).toBe(true);
-    expect(relativePaths.has("math.pdf/Chapter 1/001.md")).toBe(true);
-    expect(directories.has("/workspace/math.pdf")).toBe(true);
-    expect(directories.has("math.pdf")).toBe(true);
+    // Only immediate top-level folders, not nested files
+    expect(names).toContain("math.pdf/");
+    expect(names).toContain("physics.pdf/");
+    expect(names).not.toContain("001.md");
+    expect(children.every((c) => c.isDir)).toBe(true);
+  });
+
+  it("lists immediate children of a subdirectory", () => {
+    const children = getFilesystemChildren(mockFiles, "math.pdf/");
+    const names = children.map((c) => c.name);
+
+    expect(names).toContain("Chapter 1/");
+    expect(names).toContain("Chapter 2/");
+    expect(names).not.toContain("001.md");
+  });
+
+  it("lists files inside a leaf directory with natural order", () => {
+    const children = getFilesystemChildren(mockFiles, "math.pdf/Chapter 1/");
+    const names = children.map((c) => c.name);
+
+    expect(names).toEqual(["001.md", "002.md"]);
+    expect(children.every((c) => !c.isDir)).toBe(true);
   });
 
   it("identifies active token and command name", () => {
@@ -47,10 +67,12 @@ describe("terminal-autocomplete", () => {
     expect(flagValues).toContain("-rni");
   });
 
-  it("completes file and directory paths", () => {
+  it("completes immediate directory segments cleanly", () => {
     const result = getTerminalCompletions("cat math", 8, mockFiles, []);
-    expect(result.suggestions.length).toBeGreaterThan(0);
-    expect(result.suggestions.some((s) => s.value.includes("math.pdf"))).toBe(true);
+    expect(result.suggestions.length).toBe(1);
+    expect(result.suggestions[0].display).toBe("math.pdf/");
+    expect(result.suggestions[0].value).toBe("math.pdf/");
+    expect(result.ghostText).toBe(".pdf/");
   });
 
   it("provides ghost text from command history if available", () => {
@@ -59,4 +81,3 @@ describe("terminal-autocomplete", () => {
     expect(result.ghostText).toBe("ni probability /workspace");
   });
 });
-
