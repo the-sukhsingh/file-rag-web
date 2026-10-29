@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from 
 import { Spinner } from "@/components/ui/spinner";
 import { createMessageId, now } from "@/lib/chat/ids";
 import { runAgent } from "@/lib/groq/agent";
+import { getSingleGroupContext, selectOnlyGroup, toggleGroupSelection } from "@/lib/library/groups";
 import { listChunksByDocument } from "@/lib/library/store";
 import type { ChatMessage, ChatSource, DocumentRecord, SourceChunk } from "@/lib/library/types";
 
@@ -130,29 +131,21 @@ export default function WorkspacePage() {
   };
 
   const toggleGroup = (groupId: string | null) => {
-    const groupDocs = groupId
-      ? library.documents.filter((doc) => doc.groupId === groupId)
-      : library.documents.filter((doc) => !doc.groupId || !library.groups.some((g) => g.id === doc.groupId));
-    if (!groupDocs.length) return;
-    const allSelected = groupDocs.every((doc) => !excludedIds.has(doc.id));
-    const next = new Set(excludedIds);
-    if (allSelected) {
-      for (const doc of groupDocs) next.add(doc.id);
-    } else {
-      for (const doc of groupDocs) next.delete(doc.id);
-    }
+    const next = toggleGroupSelection({
+      documents: library.documents,
+      groups: library.groups,
+      excludedIds,
+      targetGroupId: groupId,
+    });
     setSelection(next);
   };
 
   const selectGroupOnly = (groupId: string | null) => {
-    const groupDocIds = new Set(
-      groupId
-        ? library.documents.filter((doc) => doc.groupId === groupId).map((d) => d.id)
-        : library.documents.filter((doc) => !doc.groupId || !library.groups.some((g) => g.id === doc.groupId)).map((d) => d.id)
-    );
-    const next = new Set(
-      library.documents.filter((doc) => !groupDocIds.has(doc.id)).map((doc) => doc.id)
-    );
+    const next = selectOnlyGroup({
+      documents: library.documents,
+      groups: library.groups,
+      targetGroupId: groupId,
+    });
     setSelection(next);
   };
 
@@ -429,13 +422,7 @@ export default function WorkspacePage() {
   );
 
   const singleGroupContext = React.useMemo(() => {
-    if (!selectedDocuments.length || !library.groups.length) return null;
-    const firstGroupId = selectedDocuments[0]?.groupId;
-    if (!firstGroupId) return null;
-    const group = library.groups.find((g) => g.id === firstGroupId);
-    if (!group) return null;
-    const allInSameGroup = selectedDocuments.every((d) => d.groupId === firstGroupId);
-    return allInSameGroup ? group : null;
+    return getSingleGroupContext(selectedDocuments, library.groups);
   }, [selectedDocuments, library.groups]);
 
   const composer = (hero: boolean) => (
